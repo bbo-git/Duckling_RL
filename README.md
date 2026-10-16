@@ -1,3 +1,5 @@
+```markdown
+
 # Duckling
 
 <p align="center">
@@ -44,3 +46,5 @@ Before updating to 16b, training for 1500 its on duck_basis might me a good idea
   ([legal code](https://creativecommons.org/licenses/by-nc-sa/4.0/legalcode)):
   attribution required, **no commercial use**, and adaptations must be shared under the same license.
   See [LICENSE-MODELS.md](LICENSE-MODELS.md) for which files this covers.
+
+```
