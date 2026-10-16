@@ -25,6 +25,10 @@ chmod +x duck.sh && ./duck.sh setup
 ENVS=8192 ./duck.sh train 2000
 ```
 
+## Notes
+
+Before updating to 16b, training for 1500 its on duck_basis might me a good idea.
+
 ## License and attribution
 
 - **Code:** Apache License 2.0, see [LICENSE](LICENSE). Files from microduck_rl have been modified.
