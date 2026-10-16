@@ -1,10 +1,10 @@
-```markdown
-
 # Duckling
 
+```html
 <p align="center">
   <img src="duckling_mujoco.png" width="250">
 </p>
+```
 
 A ~15 cm, ~190 g bipedal duck robot, and the reinforcement-learning setup that teaches it to walk
 and to follow a person at 50 cm. It is a scaled-down, redesigned take on Pollen Robotics' Microduck.
@@ -47,4 +47,3 @@ Before updating to 16b, training for 1500 its on duck_basis might me a good idea
   attribution required, **no commercial use**, and adaptations must be shared under the same license.
   See [LICENSE-MODELS.md](LICENSE-MODELS.md) for which files this covers.
 
-```
