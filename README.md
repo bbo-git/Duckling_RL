@@ -1,5 +1,7 @@
 # Duckling
 
+![Duckling](duckling_mujoco.png)
+
 A ~15 cm, ~190 g bipedal duck robot, and the reinforcement-learning setup that teaches it to walk
 and to follow a person at 50 cm. It is a scaled-down, redesigned take on Pollen Robotics' Microduck.
 
