@@ -1,0 +1,11 @@
+<mujoco model="duckling scene">
+  <include file="robot_walk.xml"/>
+  <asset>
+    <texture name="grid" type="2d" builtin="checker" rgb1="0.25 0.26 0.28" rgb2="0.32 0.33 0.35" width="256" height="256"/>
+    <material name="grid" texture="grid" texrepeat="40 40"/>
+  </asset>
+  <worldbody>
+    <light pos="0 0 1.5" dir="0 0 -1" directional="true"/>
+    <geom name="floor" type="plane" size="2 2 0.05" material="grid"/>
+  </worldbody>
+</mujoco>

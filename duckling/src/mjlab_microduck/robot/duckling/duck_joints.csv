@@ -1,0 +1,16 @@
+joint,soort,type,onderdeel_1,onderdeel_2,context,x_mm,y_mm,z_mm,as_x,as_y,as_z,min_graden,max_graden,onderdrukt
+head_pitch,constructie-as,revolute,beugel_pitch_head,motor_pitch_head,,(root),11.642,19.375,130.909,0.0,1.0,-0.0,,,nee
+left_hip_roll,constructie-as,revolute, gear_motor2_links, gear_motor1_links, plaat_links, magneetje_roll_links,(root),-14.637,17.305,59.575,1.0,0.0,0.0,,,nee
+left_hip_pitch,constructie-as,revolute, onderbeen_links,(root),0.0,32.806,59.575,0.0,1.0,0.0,,,nee
+right_hip_roll,constructie-as,revolute, gear_motor2_rechts, gear_motor1_rechts, plaat_recht, magneetje_roll_rechts,(root),-14.637,-17.305,59.575,-1.0,0.0,0.0,,,nee
+right_hip_pitch,constructie-as,revolute,onderbeen_rechts,(root),0.0,-32.806,59.575,0.0,1.0,0.0,,,nee
+right_ankle_pitch,constructie-as,revolute,servo_voet_rechts, enkel_rechts,(root),-24.261,-31.234,44.313,0.0,1.0,-0.0,,,nee
+right_hip_yaw,constructie-as,revolute,,,(root),-0.0,-17.305,78.95,0.0,0.0,-1.0,,,nee
+right_toe_pitch,constructie-as,revolute, servo_teen_rechts,teen_rechts,zool_rechts ,(root),-8.867,-14.931,16.095,0.0,-1.0,0.0,,,nee
+left_toe_pitch,constructie-as,revolute, servo_teen_links,teen_links,zool_links ,(root),-8.867,14.931,16.095,-0.0,-1.0,-0.0,,,nee
+left_ankle_pitch,constructie-as,revolute,,,(root),-24.261,31.234,44.313,-0.0,1.0,0.0,,,nee
+left_hip_yaw,constructie-as,revolute, beugel_pitch_links, blok_differentieel_links, motor_left_hip_pitch, motor_left_hip_roll, magneetje_pitch_links, encoder_pitch_links, encoder_roll_links,(root),-0.0,17.305,78.95,0.0,0.0,1.0,,,nee
+neck_pitch,constructie-as,revolute, neck, blok_differentieel_head,(root),16.623,7.227,99.779,-0.0,1.0,0.0,,,nee
+head_roll,constructie-as,revolute, head_shell, head_base, gear_motor1_head, plaat_head, gear_motor2_head(root),-2.995,-0.0,130.909,-1.0,-0.0,0.0,,,nee
+head_yaw,constructie-as,revolute,motor_yaw_head,motor_roll_head,(root),11.642,-0.0,138.09,0.0,0.0,1.0,,,nee
+jaw_pitch,constructie-as,revolute,jaw,,(root),11.642,-19.375,130.909,0.0,-1.0,0.0,,,nee
