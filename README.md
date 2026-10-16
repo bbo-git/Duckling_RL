@@ -20,8 +20,9 @@ by Pollen Robotics**, trained with [mjlab](https://github.com/mujocolab/mjlab) (
 ## Quickstart
 
 ```bash
-uv run train Mjlab-Velocity-Flat-Duckling --env.scene.num-envs 8192
-python tools/duckling_follow.py <policy.onnx> --grid src/mjlab_microduck/robot/duckling/grids/gait_grid_v7b.npz
+chmod +x duck.sh && ./duck.sh setup
+./duck.sh update /duck_volg16b.zip
+ENVS=8192 ./duck.sh train 2000
 ```
 
 ## License and attribution
