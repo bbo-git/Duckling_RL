@@ -26,6 +26,14 @@ chmod +x duck.sh && ./duck.sh setup
 ./duck.sh update /duck_volg16b.zip
 ENVS=8192 ./duck.sh train 2000
 ```
+### play iterations
+```bash
+python duckling_follow.py duckling_walk_<iteration>.onnx --grid gait_grid_v7b.npz
+```
+### create a custom walk cycle for training
+```bash
+gait_gen.py --view
+```
 
 ## Notes
 
