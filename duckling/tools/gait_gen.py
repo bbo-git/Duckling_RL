@@ -198,6 +198,7 @@ SLIDERS = [
     ("lift_hip_deg", "optillen_heup_gr", -20.0, 40.0, 1.0),
     ("lift_enkel_deg", "optillen_enkel_gr", 0.0, 40.0, 1.0),
     ("lift_toe_follow", "teen_volgt_heup", 0.0, 1.0, 1.0),
+    ("width_m", "voetbreedte_mm", 0.0, 80.0, 0.001),   # 2026-10-29: 0 = automatisch
 ]
 
 

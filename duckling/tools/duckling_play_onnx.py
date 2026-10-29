@@ -17,14 +17,18 @@ Builds the 61-D observation exactly as in training (Mjlab-Velocity-Flat-Duckling
     [55:61] body command      zeros
     [61:63] gait clock        sin, cos of the walk-cycle phase (only for policies trained
                               with the Blender walk cycle; detected from the ONNX input size)
+    [63:65] stijl (V2)        one-hot: normaal, parmantig (policies met stijlkeuze, 65 ingangen)
+
+V2 (2026-10-29): HOME = CAD-nulstand; policies met stijlkeuze:
+    python duckling_play_onnx.py duckling_walk_XXXX.onnx            # roosters uit grids/ (STYLES)
+    toetsen 1 / 2 = stijl normaal / parmantig
 Action (14) = joint position targets relative to HOME, sent at 50 Hz.
 NOTE: policies trained before the HOME stance was introduced expect HOME = 0;
 run those with --cad-home.
 
 Keys in the viewer (keyboard focus on the MuJoCo window):
-    arrow up / down     forward / backward speed
+    arrow up / down     forward speed (0 .. 12 cm/s; lopen-policy: geen achteruit)
     arrow left / right  turn left / right
-    , / .               sideways left / right
     I / K               neck pitch      J / L   head yaw
     Z                   all commands to zero
     backspace           reset the robot
@@ -36,28 +40,30 @@ import time
 
 import mujoco
 
-FOLLOW = [True]   # camera follows the robot; G in the viewer toggles
+FOLLOW = [False]  # camera follows the robot; G in the viewer toggles (default off)
 import numpy as np
 import onnxruntime as ort
 
 # --- must match training -----------------------------------------------------
 TIMESTEP = 0.002
 DECIMATION = 10                      # 50 Hz policy
-SPAWN_Z = 0.059
+SPAWN_Z = 0.0602                     # V2 (V1: 0.059)
 # HOME stance (deg), must match duckling_constants.py. Observations are joint angles
 # relative to HOME, actions are offsets from HOME.
-HOME_POS_DEG = {"hip_pitch": -11.8, "knee": -8.6, "ankle": -20.3}
+HOME_POS_DEG = {"hip_pitch": 0.0, "knee": 0.0, "ankle": 0.0}   # V2; V1 was -11.8 / -8.6 / -20.3 (--v1-home)
+# stijlen in dezelfde volgorde als STYLES in duckling_velocity_env_cfg.py
+STYLES = [("normaal", "grids/gait_grid_normaal_v3.npz"), ("parmantig", "grids/gait_grid_parmantig_v3.npz")]
 TORSO = "trunk_base"
-LIMITS = dict(vx=0.12, vy=0.02, wz=0.6)       # = training command ranges
+LIMITS = dict(vx=(0.0, 0.12), vy=(0.0, 0.0), wz=(-0.6, 0.6))   # = training ranges (lopen: vooruit + draaien)
 CYCLE_S = 1.0                        # walk-cycle length (s), walk_cycle.npz "cycle_s"
-HEAD_LIMITS = (0.25, 0.25, 0.50, 0.15)  # neck_pitch, head_pitch, head_yaw, head_roll (= training HEAD_CAPS)
+HEAD_LIMITS = (0.25, 0.25, 1.10, 0.15)  # neck_pitch, head_pitch, head_yaw, head_roll (= training HEAD_CAPS, V2)
 
 
 NJ = 14
 REST_MODE = [True]       # hold HOME when told to stand still (see run_viewer)
-REST_FADE_S = 0.5
+REST_FADE_S = 1.0   # volg17: 0.5 dropped it mid-correction (fell 4/52)
 # Sliders at the bottom of the viewer's Control panel: name, min, max
-SLIDERS = (("vooruit_cm_s", -4.5, 12.0), ("draai_gr_s", -34.0, 34.0), ("zijwaarts_cm_s", -2.0, 2.0),
+SLIDERS = (("vooruit_cm_s", 0.0, 12.0), ("draai_gr_s", -34.0, 34.0),
            ("kop_draai_gr", -28.0, 28.0), ("kop_knik_gr", -14.0, 14.0))
 
 
@@ -139,7 +145,7 @@ class Policy:
         self.inp = self.sess.get_inputs()[0].name
         n_in = self.sess.get_inputs()[0].shape[-1]
         n_out = self.sess.get_outputs()[0].shape[-1]
-        assert n_in in (61, 63) and n_out == 14, f"unexpected policy shape {n_in}->{n_out}"
+        assert n_in in (61, 63, 63 + len(STYLES)) and n_out == 14, f"unexpected policy shape {n_in}->{n_out}"
         self.n_in = n_in
 
     def __call__(self, obs):
@@ -148,8 +154,10 @@ class Policy:
 
 class Duckling:
     gait_clock = False
-    def __init__(self, scene, sliders=False, grid=None):
-        self.m = model_with_sliders(scene) if sliders else mujoco.MjModel.from_xml_path(scene)
+    styled = False          # policy met stijl-one-hot
+    style = 0
+    def __init__(self, scene, sliders=False, grid=None, model=None):
+        self.m = model if model is not None else (model_with_sliders(scene) if sliders else mujoco.MjModel.from_xml_path(scene))
         self.grid = grid
         self.phase = 0.0
         self.m.opt.timestep = TIMESTEP
@@ -203,18 +211,26 @@ class Duckling:
             ph = 2 * np.pi * self.phase
             w = self.grid.walk(twist) if self.grid is not None else 1.0   # clock fades out when standing
             parts.append([w * np.sin(ph), w * np.cos(ph)])
+        if self.styled:
+            parts.append(np.eye(len(STYLES))[self.style])
         return np.concatenate(parts)
 
     def step(self, action, twist=None):
         # gait clock as in training: fixed Blender cycle, or the cadence of your walk
         # (gait grid) at the current command
-        cyc = self.grid.cycle(twist) if (self.grid is not None and twist is not None) else CYCLE_S
+        g = self.grid
+        cyc = g.cycle(twist) if (g is not None and twist is not None) else CYCLE_S
         self.phase = (self.phase + TIMESTEP * DECIMATION / cyc) % 1.0
         self.last_action = action.copy()
         self.d.ctrl[:self.nj] = self.home + action           # targets relative to HOME
         for _ in range(DECIMATION):
             mujoco.mj_step(self.m, self.d)
         self.steps += 1
+
+    def set_style(self, i):
+        self.style = int(i)
+        if getattr(self, "grids", None):
+            self.grid = self.grids[self.style]
 
     @property
     def height(self):
@@ -318,7 +334,7 @@ def run_headless(robot, pol, seconds, twist, head):
 
 def run_viewer(robot, pol, speed=1.0, vx=0.0, wz=0.0):
     import mujoco.viewer
-    cmd = dict(vx=vx, vy=0.0, wz=wz)
+    cmd = dict(vx=float(np.clip(vx, *LIMITS["vx"])), vy=0.0, wz=wz)
     play = dict(speed=speed)
     head = np.zeros(4)
     flags = dict(reset=False)
@@ -330,8 +346,6 @@ def run_viewer(robot, pol, speed=1.0, vx=0.0, wz=0.0):
         elif k == g.KEY_DOWN: cmd["vx"] -= step["vx"]
         elif k == g.KEY_LEFT: cmd["wz"] += step["wz"]
         elif k == g.KEY_RIGHT: cmd["wz"] -= step["wz"]
-        elif k == g.KEY_COMMA: cmd["vy"] += step["vy"]
-        elif k == g.KEY_PERIOD: cmd["vy"] -= step["vy"]
         elif k == g.KEY_I: head[0] -= 0.1
         elif k == g.KEY_K: head[0] += 0.1
         elif k == g.KEY_J: head[2] += 0.1
@@ -340,12 +354,15 @@ def run_viewer(robot, pol, speed=1.0, vx=0.0, wz=0.0):
             cmd.update(vx=0.0, vy=0.0, wz=0.0)
             head[:] = 0
         elif k == g.KEY_BACKSPACE: flags["reset"] = True
+        elif robot.styled and ord("1") <= k < ord("1") + len(STYLES):
+            robot.set_style(k - ord("1")); LIMITS["vx"] = (0.0, robot.grid.v100)
+            print("stijl:", STYLES[robot.style][0], f"(100% = {robot.grid.v100 * 100:.1f} cm/s)")
         elif k == ord("G"):
             FOLLOW[0] = not FOLLOW[0]; print("camera volgt:", FOLLOW[0])
         elif k == g.KEY_EQUAL: play["speed"] = min(play["speed"] * 2, 16.0)
         elif k == g.KEY_MINUS: play["speed"] = max(play["speed"] / 2, 0.125)
-        for n, lim in LIMITS.items():
-            cmd[n] = float(np.clip(cmd[n], -lim, lim))
+        for n, (lo, hi) in LIMITS.items():
+            cmd[n] = float(np.clip(cmd[n], lo, hi))
         np.clip(head, -np.array(HEAD_LIMITS), np.array(HEAD_LIMITS), out=head)
         print(f"vx {cmd['vx']:+.2f}  vy {cmd['vy']:+.2f}  wz {cmd['wz']:+.2f}  "
               f"kop {np.round(head, 2)}  snelheid {play['speed']:g}x")
@@ -355,14 +372,14 @@ def run_viewer(robot, pol, speed=1.0, vx=0.0, wz=0.0):
     sl = [robot.m.actuator(n).id for n in names] if robot.m.nu > robot.nj else []
 
     def to_sliders():
-        vals = [cmd["vx"] * 100, np.degrees(cmd["wz"]), cmd["vy"] * 100, np.degrees(head[2]), np.degrees(head[0])]
+        vals = [cmd["vx"] * 100, np.degrees(cmd["wz"]), np.degrees(head[2]), np.degrees(head[0])]
         for aid, val, (_, lo, hi) in zip(sl, vals, SLIDERS):
             robot.d.ctrl[aid] = float(np.clip(val, lo, hi))
         return [float(robot.d.ctrl[a]) for a in sl]
 
     def from_sliders(vals):
-        cmd["vx"], cmd["wz"], cmd["vy"] = vals[0] / 100, np.radians(vals[1]), vals[2] / 100
-        head[2], head[0] = np.radians(vals[3]), np.radians(vals[4])
+        cmd["vx"], cmd["wz"], cmd["vy"] = vals[0] / 100, np.radians(vals[1]), 0.0
+        head[2], head[0] = np.radians(vals[2]), np.radians(vals[3])
 
     rest = dict(b=1.0)
     shown = to_sliders()
@@ -372,6 +389,13 @@ def run_viewer(robot, pol, speed=1.0, vx=0.0, wz=0.0):
     with mujoco.viewer.launch_passive(robot.m, robot.d, key_callback=key) as v:
         fast_render(v)
         t_next = time.time()
+        # fixed free camera, aimed at the start position (2026-10-15: it wobbled along)
+        FOLLOW[0] = False
+        with v.lock():
+            v.cam.type = mujoco.mjtCamera.mjCAMERA_FREE
+            v.cam.trackbodyid = -1
+            v.cam.lookat[:] = [0.15, 0.0, 0.05]; v.cam.distance = 1.2; v.cam.azimuth = 135; v.cam.elevation = -30
+        print("camera staat vast (G = laten volgen)")
         while v.is_running():
             if sl:
                 now = [float(robot.d.ctrl[a]) for a in sl]
@@ -418,6 +442,8 @@ def main():
                     help="gait_grid.npz: voor policies getraind met jouw loopje (klok in jouw tempo)")
     ap.add_argument("--cad-home", action="store_true",
                     help="oude policies (getraind met HOME = CAD-nulstand)")
+    ap.add_argument("--v1-home", action="store_true", help="V1-policies (HOME -11.8/-8.6/-20.3)")
+    ap.add_argument("--stijl", default=STYLES[0][0], choices=[n for n, _ in STYLES])
     a = ap.parse_args()
     if a.onnx is None:
         import glob, os
@@ -429,11 +455,22 @@ def main():
     if a.cad_home:
         HOME_POS_DEG.clear()
         globals()["SPAWN_Z"] = 0.0625
+    if a.v1_home:
+        HOME_POS_DEG.update({"hip_pitch": -11.8, "knee": -8.6, "ankle": -20.3})
+        globals()["SPAWN_Z"] = 0.059
     pol = Policy(a.onnx)
     REST_MODE[0] = not a.geen_rust
-    grid = GridClock(a.grid) if a.grid else None
+    styled = pol.n_in == 63 + len(STYLES)
+    grids = [GridClock(p) for _, p in STYLES] if styled else None
+    grid = GridClock(a.grid) if a.grid else (grids[0] if styled else None)
     robot = Duckling(a.scene, sliders=not a.headless, grid=grid)
-    robot.gait_clock = pol.n_in == 63
+    robot.gait_clock = pol.n_in >= 63
+    robot.styled = styled
+    if styled:
+        robot.grids = grids
+        robot.set_style([n for n, _ in STYLES].index(a.stijl))
+        LIMITS["vx"] = (0.0, robot.grid.v100)
+        print("stijl:", a.stijl, f"(100% = {robot.grid.v100 * 100:.1f} cm/s); toetsen 1/2 wisselen")
     if robot.gait_clock:
         print("loopklok:", f"jouw loopje ({a.grid})" if grid else
               f"Blender-cyclus ({CYCLE_S:g} s) - getraind met jouw loopje? gebruik --grid gait_grid.npz")

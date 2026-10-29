@@ -64,9 +64,12 @@ LINKS = {
     "R_toe": ["teen_rechts", "zool_rechts", "servo_teen_rechts"],
     # ---- nek en kop
     "neck": ["neck"],
-    "head_pitch": ["head_shell", "servo_jaw", "ESP3-CAM:1"],
-    "head_roll": ["servo_pitch_head"],
-    "head": ["beugel_pitch_head", "servo_differentieelA_head", "servo_differentieelB_head", "blok_differentieel_head", "gear_motor1_head", "gear_motor2_head"],
+    # 2026-10-29: de kopschaal met camera, kaakservo en kaak zit ACHTER alle kopgewrichten
+    # (de camera draait mee met pitch, roll en yaw). Volgorde in de boom: nek -> pitch -> roll -> yaw.
+    "head_pitch": ["servo_pitch_head"],
+    "head_roll": ["blok_differentieel_head"],
+    "head": ["beugel_pitch_head", "servo_differentieelA_head", "servo_differentieelB_head",
+             "gear_motor1_head", "gear_motor2_head", "head_shell", "servo_jaw", "ESP3-CAM:1"],
     "jaw": ["jaw"],
 }
 
@@ -319,7 +322,9 @@ def build(joints, parts, meshdir=Path("meshes"), walk=False):
             if p not in parts:
                 continue
             required = parts[p]["printed"] and not p.startswith(TINY_MESH_AS_SPHERE)
-            optional = (meshdir / f"{p}.stl").exists()  # gekochte delen: mesh als die er is
+            # gekochte delen: mesh als die er is - 2026-10-29: NIET voor de batterij (er kan nog een
+            # V1-batterij.stl in meshes/ staan; V2: batterij = primitief op zijn zwaartepunt)
+            optional = (meshdir / f"{p}.stl").exists() and p not in BOUGHT_MASS_G
             if required or optional:
                 meshes.append(p)
 

@@ -52,6 +52,9 @@ FREE = {
 }
 
 
+GRID_VARIANTS = []   # --rooster: (snelheid, bocht) waarop ook gescoord wordt
+
+
 class Scorer:
     def __init__(self, scene):
         self.kin = DuckKinematics(scene)
@@ -171,13 +174,29 @@ def tune(scorer, p0, free, iters, seed=0, log=print):
             setattr(p, nm, float(val))
         return p
 
-    best_r = scorer.metrics(P(x)); best = scorer.score(best_r)
+    def evaluate(p):
+        if not GRID_VARIANTS:
+            r = scorer.metrics(p); return scorer.score(r), r
+        import walk_speed as W
+        st = W.Style(p)
+        tot, rr = 0.0, None
+        for sp, turn in GRID_VARIANTS:            # rooster-gangen: de regels per snelheid erop
+            q = st.params(sp); q.turn_dps = turn
+            r = scorer.metrics(q); tot += scorer.score(r)
+            if sp == 1.0 and turn == 0.0:
+                rr = r
+            rr = rr or r
+            for k in ("knee", "ankle", "hip_pitch"):
+                rr["top"][k] = max(rr["top"][k], r["top"][k])
+        return tot / len(GRID_VARIANTS), rr
+
+    best, best_r = evaluate(P(x))
     log(f"start: score {best:.2f}  {fmt(best_r)}")
     sigma = 0.15
     t0 = time.time()
     for it in range(iters):
         cand = np.clip(x + sigma * (hi - lo) * rng.standard_normal(len(x)) * (rng.random(len(x)) < 0.4), lo, hi)
-        r = scorer.metrics(P(cand)); s = scorer.score(r)
+        s, r = evaluate(P(cand))
         if s < best:
             x, best, best_r = cand, s, r
             sigma = min(0.3, sigma * 1.2)
@@ -202,12 +221,23 @@ def main():
     ap.add_argument("--iters", type=int, default=300)
     ap.add_argument("--scene", default="scene_walk.xml")
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--rooster", action="store_true",
+                    help="ook langzaam en in bochten scoren (de regels van walk_speed.py)")
     ap.add_argument("--roll", type=float, default=1.5, help="gewicht zool-kanteling (hoger = vlakkere zolen)")
+    ap.add_argument("--grens", nargs="*", default=[],
+                    help="eigen grenzen, bv. width_m=0.045:0.054 (voeten smaller) of lift_hip_deg=20:30")
     a = ap.parse_args()
     p0 = GaitParams(**{k: float(v) for k, v in json.load(open(a.params)).items()})
     sc = Scorer(a.scene)
     Scorer.ROLL_W = a.roll
-    p, r = tune(sc, p0, FREE[a.stijl], a.iters, a.seed, log=lambda s: print(s, flush=True))
+    if a.rooster:
+        GRID_VARIANTS[:] = [(0.2, 0.0), (0.6, 0.0), (1.0, 0.0), (1.0, 45.0), (0.0, 90.0)]
+    free = list(FREE[a.stijl])
+    for g in a.grens:
+        k, rng = g.split("=")
+        lo, hi = (float(x) for x in rng.split(":"))
+        free = [f for f in free if f[0] != k] + [(k, lo, hi)]
+    p, r = tune(sc, p0, free, a.iters, a.seed, log=lambda s: print(s, flush=True))
     with open(a.out, "w") as f:
         json.dump(asdict(p), f, indent=1)
     print("opgeslagen:", a.out)

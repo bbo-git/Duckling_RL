@@ -58,6 +58,10 @@ class SitParams:
     look_deg: float = 30.0          # rondkijken: kop-yaw amplitude
     look_s: float = 3.0
     rest_s: float = 1.0
+    # 2026-10-29: kop- en nekstand tijdens het zitten (bovenop "kop waterpas"), graden
+    sit_neck_deg: float = 0.0       # + = nek voorover/omlaag, - = nek naar achteren (kop intrekken)
+    sit_head_deg: float = 0.0       # + = kop omhoog, - = kop omlaag
+    sit_tilt_deg: float = 0.0       # kop scheef (roll)
 
 
 SLIDERS = [
@@ -73,6 +77,9 @@ SLIDERS = [
     ("up_s", "opstaan_s", 0.5, 5.0, 1.0),
     ("look_deg", "kijk_gr", 0.0, 80.0, 1.0),
     ("look_s", "kijk_s", 1.0, 8.0, 1.0),
+    ("sit_neck_deg", "zit_nek_gr", -30.0, 30.0, 1.0),
+    ("sit_head_deg", "zit_kop_gr", -30.0, 30.0, 1.0),
+    ("sit_tilt_deg", "zit_kop_scheef_gr", -20.0, 20.0, 1.0),
 ]
 
 
@@ -140,7 +147,7 @@ class SitPlanner:
         if sit:
             segs.append(("voorover", p.fwd_s, SIT, CROUCH))
         segs += [("opstaan", p.up_s, CROUCH, HOME), ("staan", p.rest_s, HOME, HOME)]
-        X, Z, A, phase, hold_t = [], [], [], [], []
+        X, Z, A, phase, hold_t, low_f = [], [], [], [], [], []
         for name, dur, a0, a1 in segs:
             nn = max(1, int(round(dur * FPS)))
             for i in range(nn):
@@ -148,6 +155,8 @@ class SitPlanner:
                 X.append(a0[0] + s * (a1[0] - a0[0])); Z.append(a0[1] + s * (a1[1] - a0[1]))
                 A.append(a0[2] + s * (a1[2] - a0[2])); phase.append(name)
                 hold_t.append(i / FPS if name == "zitten" else -1.0)
+                # hoe ver "in zit" (0 = staan, 1 = zit): voor de kop- en nekstand
+                low_f.append({"zakken": s, "opstaan": 1.0 - s, "staan": 0.0}.get(name, 1.0))
         n = len(X)
         t = np.arange(n) / FPS
         q = k.home.copy()
@@ -159,13 +168,23 @@ class SitPlanner:
             ht = hold_t[i]
             w = float(np.clip(min(ht, p.hold_s - ht) / 0.6, 0, 1)) if ht >= 0 else 0.0
             qo[J["head_yaw"]] = r(p.look_deg) * w * math.sin(2 * math.pi * ht / max(p.look_s, 0.5))
-            qo[J["neck_pitch"]] = float(np.clip(-A[i] * 0.5, -0.5, 0.5))
-            qo[J["head_pitch"]] = float(np.clip(A[i] * 0.5, -0.5, 0.5))   # head_pitch-as is gespiegeld
+            f = low_f[i]
+            qo[J["neck_pitch"]] = float(np.clip(-A[i] * 0.5 + f * r(p.sit_neck_deg), -0.5, 0.5))
+            qo[J["head_pitch"]] = float(np.clip(A[i] * 0.5 + f * r(p.sit_head_deg), -0.5, 0.5))   # head_pitch-as is gespiegeld
+            qo[J["head_roll"]] = float(np.clip(f * r(p.sit_tilt_deg), -0.33, 0.33))
             out_q.append(qo); out_pos.append(np.array([X[i], 0.0, Z[i]])); out_quat.append(quat.copy())
             errs.append(err)
         return dict(t=t, joint_pos=np.array(out_q), root_pos=np.array(out_pos),
                     root_quat=np.array(out_quat), phase=np.array(phase), ik_err=np.array(errs),
                     joint_names=np.array(JOINT_ORDER), fps=FPS, params=json.dumps(asdict(p)))
+
+
+def sit_pose(planner, p):
+    """Gewrichtshoeken (JOINT_ORDER), romphoogte en -kanteling midden in het zitten, zonder rondkijken."""
+    q = SitParams(**{**asdict(p), "look_deg": 0.0})
+    g = planner.generate(q)
+    i = list(g["phase"]).index("zitten") + int(q.hold_s * FPS / 2)
+    return g["joint_pos"][i].copy(), float(g["root_pos"][i][2]), g["root_quat"][i].copy()
 
 
 def simulate(spec_or_model, g, scene_qadr=None, settle_s=0.5):
@@ -403,7 +422,9 @@ def main():
     g = planner.generate(p)
     if a.save:
         np.savez(a.save, **g)
-        print("opgeslagen:", a.save)
+        with open(os.path.splitext(a.save)[0] + ".json", "w") as f:
+            json.dump(asdict(p), f, indent=1)
+        print("opgeslagen:", a.save, "(+ .json)")
     report(planner, g, simulate(physics_spec(a.scene).compile(), g))
 
 

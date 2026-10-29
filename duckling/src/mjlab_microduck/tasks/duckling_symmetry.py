@@ -11,7 +11,7 @@ Actuator / joint block order (14):
     5 neck_pitch, 6 head_pitch, 7 head_roll, 8 head_yaw
     9-13 right hip_yaw, hip_roll, hip_pitch, knee, ankle
 Actor obs (63): ang_vel 0:3, gravity 3:6, joint_pos 6:20, joint_vel 20:34,
-last_action 34:48, twist 48:51, head command 51:55 (neck_pitch, head_pitch, head_yaw,
+last_action 34:48, target 48:51 (bearing, distance, visible - 2026-10-15, was twist), head command 51:55 (neck_pitch, head_pitch, head_yaw,
 head_roll), body command 55:61, gait clock 61:63 (sin, cos). Mirrored the clock is half
 a cycle on (the other foot leads): both components flip.
 """
@@ -21,14 +21,20 @@ from tensordict import TensorDict
 _JOINT_PERM = [9, 10, 11, 12, 13, 5, 6, 7, 8, 0, 1, 2, 3, 4]
 _JOINT_SIGN = [1, 1, 1, 1, 1, 1, 1, -1, -1, 1, 1, 1, 1, 1]
 
+# 2026-10-29 (V2): stijl-one-hot 63:63+n (spiegelt niet), en het commando hangt af van de taak:
+# lopen = twist (vx, vy, wz -> vx, -vy, -wz), volgen = doel (bearing, afstand, zichtbaar -> -b, a, z)
+from mjlab_microduck.tasks.duckling_velocity_env_cfg import STYLES, TASK
+_N_STYLE = len(STYLES)
+_CMD_SIGN = [-1.0, 1.0, 1.0] if TASK == "volgen" else [1.0, -1.0, -1.0]
 _OBS_PERM = ([0, 1, 2] + [3, 4, 5]
              + [6 + j for j in _JOINT_PERM] + [20 + j for j in _JOINT_PERM] + [34 + j for j in _JOINT_PERM]
-             + [48, 49, 50] + [51, 52, 53, 54] + [55, 56, 57, 58, 59, 60] + [61, 62])
+             + [48, 49, 50] + [51, 52, 53, 54] + [55, 56, 57, 58, 59, 60] + [61, 62]
+             + [63 + i for i in range(_N_STYLE)])
 _OBS_SIGN = ([-1.0, 1.0, -1.0] + [1.0, -1.0, 1.0]
              + _JOINT_SIGN + _JOINT_SIGN + _JOINT_SIGN
-             + [1.0, -1.0, -1.0] + [1.0, 1.0, -1.0, -1.0] + [1.0, -1.0, 1.0, -1.0, 1.0, -1.0]
-             + [-1.0, -1.0])
-assert len(_OBS_PERM) == len(_OBS_SIGN) == 63
+             + _CMD_SIGN + [1.0, 1.0, -1.0, -1.0] + [1.0, -1.0, 1.0, -1.0, 1.0, -1.0]
+             + [-1.0, -1.0] + [1.0] * _N_STYLE)
+assert len(_OBS_PERM) == len(_OBS_SIGN) == 63 + _N_STYLE
 
 _cache = {}
 

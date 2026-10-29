@@ -135,3 +135,23 @@ cd /workspace && python3 -c "import zipfile,os;z=zipfile.ZipFile('duck_basis.zip
 3. **Robot (deels) bouwen.** Eerst de enkelservo testen op één been met vol gewicht; servo's meten (stapresponsie, vertraging, kracht) en in het model zetten.
 4. Daarna: sturen (draai-patroon in de grid is zwak: heup-yaw ±8° bij draaien tegen ±3° rechtuit), toestandsmachine,
    losse policies (achteruit, opstaan, koprol), snavel als verstoring in de training, servo-veilige stijl.
+
+## V2 — stand 29 okt 2026 (alles servo's, stijlkeuze)
+- Robot V2: ES9051 (heup-yaw, differentieel 2x per heup, enkel, teen, nek) + ES9251 II (kop). 163 g. HOME = CAD-nulstand (romp 59.2 mm).
+  Model: `robot_walk.xml` uit `duck_joints.csv`/`duck_links.csv` (Fusion: hernoem nog `head` -> `head_yaw`, `right_anke_pitch` -> `right_ankle_pitch`).
+- Loopjes (servo-veilig, `tools/gait_tune.py`): `favorites/normaal_v3.json` (9.0 cm/s), `favorites/parmantig_v2.json` (7.4 cm/s).
+  Roosters: `grids/gait_grid_normaal_v3.npz`, `grids/gait_grid_parmantig_v2.npz` (`walk_speed.py`: geen rennen meer, max 100%).
+  Controle per rooster: `tools/grid_check.py`. Normaal: enkel tot 9.6 rad/s alleen bij 90-100% in scherpe bochten (90 gr/s).
+- Training: één policy, stijl als one-hot (obs 65). `STYLES` in `duckling_velocity_env_cfg.py`.
+  `DUCK_TASK=lopen` (standaard): vx = fractie van de 100%-snelheid van de stijl. `DUCK_TASK=volgen`: fine-tune daarna.
+  Spiegeltabel aangepast (stijl spiegelt niet; commando-teken per taak). `./duck.sh check` = `scripts/check_rewards_v2.py`
+  (eigen loopje wint +10/+11% van het andere loopje, meer van stilstaan/trappelen).
+- Afspelen: `python ../../../../tools/duckling_play_onnx.py <onnx>` (roosters automatisch; toetsen 1/2 = stijl).
+- Zitten: `tools/sit_gen.py` — hurken werkt (romp ~44 mm, 10° voorover); op de staart zitten kan niet (zwaartepunt >= 21 mm achter de zolen).
+- 29 okt (middag): GEDRAG zonder neurale netwerken voor de camera. ESP32-CAM doet optical flow en stuurt het protocol
+  (zie kop van `src/mjlab_microduck/tasks/duckling_behavior.py`): richting, afstand, bewegings-grootte 0-3, -intensiteit 0-3,
+  eigen beweging, nadering. De toestandsmachine (RUST/KIJKEN/NADEREN/VOLGEN/ORBIT/TERUG/ZOEKEN) maakt vx, wz en kopcommando.
+  Training: 50% van de envs krijgt commando's uit die toestandsmachine met een virtuele persoon + nep-ESP (alle overgangen).
+  Kop-yaw tot 63 gr (rondje: persoon op ~90 gr opzij). Kopmodel: schaal + camera + kaak achter alle kopgewrichten.
+  Bekijken: `tools/duckling_gedrag.py` (rode bal = persoon = richtpunt van de view; 1-3 intensiteit, 4-6 grootte, 0 geen,
+  7 stijl, 8 uit beeld). Zonder ONNX kinematisch. Pod-update: `duck_v2_gedrag.zip` (vervangt duck_v2_stijl.zip).

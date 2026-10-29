@@ -1,0 +1,19 @@
+{
+ "crouch_z_m": 0.03937,
+ "crouch_pitch_deg": 3.4,
+ "sit": 0.0,
+ "sit_z_m": 0.03112,
+ "sit_pitch_deg": -53.55,
+ "foot_dx_m": 0.033,
+ "down_s": 1.5,
+ "back_s": 1.0,
+ "hold_s": 4.0,
+ "fwd_s": 0.4,
+ "up_s": 2.5,
+ "look_deg": 30.0,
+ "look_s": 3.0,
+ "rest_s": 1.0,
+ "sit_neck_deg": -30.0,
+ "sit_head_deg": -30.0,
+ "sit_tilt_deg": -1.4
+}

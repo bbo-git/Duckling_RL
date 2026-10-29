@@ -43,6 +43,8 @@ def get_walk_spec() -> mujoco.MjSpec:
 # flat soles and slightly bent knees (ankle = hip_pitch + knee keeps the sole level).
 # Same values left and right: the pitch-chain axes are not mirrored in the CAD export.
 HOME_POS_DEG = {"hip_pitch": -11.8, "knee": -8.6, "ankle": -20.3}
+# 2026-10-28 (V2, alles servo's): de CAD-nulstand IS de balansstand (zwaartepunt boven de zolen)
+HOME_POS_DEG = {"hip_pitch": 0.0, "knee": 0.0, "ankle": 0.0}
 HOME_FRAME = EntityCfg.InitialStateCfg(
     joint_pos={
         r".*_hip_pitch$": math.radians(HOME_POS_DEG["hip_pitch"]),
@@ -55,6 +57,7 @@ HOME_FRAME = EntityCfg.InitialStateCfg(
 
 # Spawn height of trunk_base (m); it settles at ~57 mm in the HOME stance.
 SPAWN_Z = (0.0575, 0.0600)
+SPAWN_Z = (0.0595, 0.0615)   # V2: trunk_base staat op ~59.2 mm in HOME
 
 FULL_COLLISION = CollisionCfg(
     geom_names_expr=[".*_collision"],

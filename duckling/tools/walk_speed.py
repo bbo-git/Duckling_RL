@@ -32,7 +32,8 @@ import numpy as np
 import gait_gen as G
 
 STYLE = "favorites/jairo_walk_v5.npz"
-SPEEDS = np.round(np.concatenate([[-0.5, -0.35, -0.2, 0.0], np.linspace(0.2, 1.0, 9), [1.15, 1.3]]), 3)
+# 2026-10-29 (v2, servo's): je loopje (100%) zit al op ~90% van de servosnelheid -> geen 115/130%
+SPEEDS = np.round(np.concatenate([[-0.5, -0.35, -0.2, 0.0], np.linspace(0.2, 1.0, 9)]), 3)
 # negative = walking backwards (2026-10-13): your walk at |speed|, relaxed, steps reversed
 TURNS = np.array([-90.0, -45.0, 0.0, 45.0, 90.0])          # deg/s, + = left
 SIDES = np.array([-0.010, 0.0, 0.010])                     # m per cycle, + = left
@@ -41,6 +42,8 @@ STANCE_WIDTH = 0.0                                         # m between the feet 
 FOLLOW = [True]
 # what the knee servos can follow (factors on your walk); KNEE_MAX = warning level in --check
 SERVO_FIT = dict(cycle=1.05, cadence=0.05, lift=0.8, dip=1.0, bob=0.3)   # dip: your own value (v3); bob kept low
+# 2026-10-29 (v2): de loopjes zijn al servo-veilig afgesteld (gait_tune.py) -> 100% = precies je loopje
+SERVO_FIT = dict(cycle=1.0, cadence=0.0, lift=1.0, dip=1.0, bob=1.0)
 KNEE_MAX = 8.0                                             # rad/s, ~60% of the servo no-load speed
 # 2026-10-14 (v5): walking into the steps when going forward. Both grow with speed from 20 %.
 COM_AHEAD = 0.004      # m: centre of mass ahead of the stance feet at 100 % (130 %: 5.2 mm)
@@ -49,6 +52,7 @@ PUSH_DEG = 15.0        # toe-off at 100 %: heel up over the front edge of the so
 # 1 / RUN_CYCLE (2x the steps per second) with shorter, lower steps: two clearly different gaits.
 # Joint speeds stay lower than your fast walk (enkel ~8 rad/s at 14 cm/s vs ~10 for the walk).
 RUN_FROM, RUN_FULL, RUN_CYCLE = 0.50, 1.05, 2.0 / 3.0   # 2026-10-15: 1.5x cadence (was 2x), wide smooth ramp
+RUN_FROM, RUN_FULL = 9.0, 10.0   # 2026-10-29 (v2): rennen uit - 1.5x cadans haalt de ES9051 niet
 PUSH_MAX = 20.0        # ankle servo: 30 deg toe-off needed ~15 rad/s (no-load max 13.1); 20 deg -> ~7
 
 
@@ -76,7 +80,7 @@ def fast_render(v):
 
 
 def load_params(path):
-    p = json.loads(str(np.load(path)["params"]))
+    p = json.load(open(path)) if str(path).endswith(".json") else json.loads(str(np.load(path)["params"]))
     # 2026-10-28 (v2): de voetbreedte uit je loopje geldt (automatisch gaf bij langzaam lopen
     # ~94 mm op het nieuwe ontwerp: benen wijd gespreid, IK tegen de grenzen). 0 = automatisch.
     return G.GaitParams(**{f.name: float(p[f.name]) for f in fields(G.GaitParams) if f.name in p})

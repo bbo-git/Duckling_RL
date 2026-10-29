@@ -5,7 +5,8 @@
 #   ./duck.sh update file.zip    unpack an update zip from Claude into the repo
 #   ./duck.sh library [n]        (re)build gait_library.npz from the gait generator
 #   ./duck.sh grid               gait_grid.npz = jouw loopje: snelheid x bocht x zijstap (STYLE=jairo_walk_v1 voor het origineel)
-#   ./duck.sh check              reward ordering check (walk cycle must beat the alternatives)
+#   ./duck.sh check              reward-volgorde per stijl (eigen loopje moet winnen; V2)
+#   DUCK_TASK=volgen ./duck.sh resume 1000   volgen als fine-tune na lopen (standaard DUCK_TASK=lopen)
 #   ./duck.sh train [iters]      generate model, check it, (re)start training + tensorboard
 #   ./duck.sh resume [iters]     continue the newest run from its last checkpoint
 #   ./duck.sh status             progress and the main numbers
@@ -189,7 +190,7 @@ EOF
   check)
     need_uv
     cd "$REPO"
-    uv run python scripts/check_rewards.py 2>&1 | sed -n '/beloning per term/,$p'
+    uv run python scripts/check_rewards_v2.py 2>&1 | sed -n '/=== stijl/,$p'
     ;;
 
   resume)
