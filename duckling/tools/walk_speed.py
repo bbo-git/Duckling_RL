@@ -31,17 +31,25 @@ import numpy as np
 
 import gait_gen as G
 
-STYLE = "favorites/jairo_walk_v3.npz"
+STYLE = "favorites/jairo_walk_v5.npz"
 SPEEDS = np.round(np.concatenate([[-0.5, -0.35, -0.2, 0.0], np.linspace(0.2, 1.0, 9), [1.15, 1.3]]), 3)
 # negative = walking backwards (2026-10-13): your walk at |speed|, relaxed, steps reversed
 TURNS = np.array([-90.0, -45.0, 0.0, 45.0, 90.0])          # deg/s, + = left
 SIDES = np.array([-0.010, 0.0, 0.010])                     # m per cycle, + = left
-HOME_H = 0.0556
+HOME_H = 0.0592
 STANCE_WIDTH = 0.0                                         # m between the feet (0 = automatic)
 FOLLOW = [True]
 # what the knee servos can follow (factors on your walk); KNEE_MAX = warning level in --check
 SERVO_FIT = dict(cycle=1.05, cadence=0.05, lift=0.8, dip=1.0, bob=0.3)   # dip: your own value (v3); bob kept low
 KNEE_MAX = 8.0                                             # rad/s, ~60% of the servo no-load speed
+# 2026-10-14 (v5): walking into the steps when going forward. Both grow with speed from 20 %.
+COM_AHEAD = 0.004      # m: centre of mass ahead of the stance feet at 100 % (130 %: 5.2 mm)
+PUSH_DEG = 15.0        # toe-off at 100 %: heel up over the front edge of the sole 
+# 2026-10-15: RUN - from RUN_FROM to RUN_FULL (fraction of your walk speed) the cadence goes to
+# 1 / RUN_CYCLE (2x the steps per second) with shorter, lower steps: two clearly different gaits.
+# Joint speeds stay lower than your fast walk (enkel ~8 rad/s at 14 cm/s vs ~10 for the walk).
+RUN_FROM, RUN_FULL, RUN_CYCLE = 0.50, 1.05, 2.0 / 3.0   # 2026-10-15: 1.5x cadence (was 2x), wide smooth ramp
+PUSH_MAX = 20.0        # ankle servo: 30 deg toe-off needed ~15 rad/s (no-load max 13.1); 20 deg -> ~7
 
 
 def fast_model(m):
@@ -69,7 +77,8 @@ def fast_render(v):
 
 def load_params(path):
     p = json.loads(str(np.load(path)["params"]))
-    p["width_m"] = 0.0                                       # always automatic
+    # 2026-10-28 (v2): de voetbreedte uit je loopje geldt (automatisch gaf bij langzaam lopen
+    # ~94 mm op het nieuwe ontwerp: benen wijd gespreid, IK tegen de grenzen). 0 = automatisch.
     return G.GaitParams(**{f.name: float(p[f.name]) for f in fields(G.GaitParams) if f.name in p})
 
 
@@ -106,9 +115,25 @@ def rule_params(base: G.GaitParams, s: float) -> G.GaitParams:
     p.head_tilt_deg = base.head_tilt_deg - 6.0 * slow + 12.0 * fast  # head up when slow, forward when hurried
     p.neck_lean_deg = base.neck_lean_deg - 3.0 * slow + 12.0 * fast
     p.pitch_deg = base.pitch_deg + 25.0 * fast                        # hurried: trunk leans forward
+    into = float(np.clip((abs(sv) - 0.2) / 0.8, 0.0, 1.0))   # 0 below 20 %, 1 from 100 % (either way)
+    # your walk's own values when it has them (v5+), else the defaults; they scale with speed
+    # (the CoM keeps moving forward above 100 %, the toe-off stays at your value)
+    # 2026-10-14: symmetric - walking backwards the CoM goes BEHIND the feet by the same amount
+    p.com_ahead_m = math.copysign(1.0, sv) * (base.com_ahead_m or COM_AHEAD) * into * (1.0 + fast)
+    p.push_deg = min(base.push_deg or PUSH_DEG, PUSH_MAX) * into * (sv > 0)   # toe-off only forwards
     if sv < 0:                      # backwards: careful - lower feet (stepping back costs
         p.lift_m *= 0.75            # more knee speed; a longer cycle made it worse)
-    p.width_m = STANCE_WIDTH        # narrower than the vertical-leg width; the rounded
+    p.width_m = base.width_m or STANCE_WIDTH   # breedte uit je loopje (0 = automatisch); the rounded
+    # run: blend in from RUN_FROM to RUN_FULL (smoothstep), forward only
+    rr = float(G._smooth((sv - RUN_FROM) / (RUN_FULL - RUN_FROM))) if sv > 0 else 0.0
+    if rr > 0:
+        p.cycle_s *= 1.0 - (1.0 - RUN_CYCLE) * rr
+        p.stride_m = sv * v0 * p.cycle_s             # same speed, shorter steps
+        p.lift_m *= 1.0 - 0.30 * rr
+        p.push_deg *= 1.0 - 0.35 * rr
+        p.double_support *= 1.0 - 0.5 * rr
+        p.dip_m *= 1.0 - 0.5 * rr
+        p.bob_m *= 1.0 - 0.5 * rr
     return p                          # soles take the few degrees of sole tilt
 
 

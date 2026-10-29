@@ -119,7 +119,9 @@ def feasibility(npz_path, scene_xml, noload=None):
     2. joint speed versus the motors' no-load speed."""
     import mujoco
     from scipy.spatial import ConvexHull, Delaunay
-    noload = noload or {"hip": 31.4, "knee": 10.5, "ankle": 10.5}
+    # 2026-10-28 (v2): alles servo. ES9051 0,09 s/60 gr @4,8 V -> 11,6 rad/s, op 1S (x0,77) ~9,0;
+    # ES9251 II (kop): snelheid onbekend, aanname 0,10 s/60 gr -> ~8,1 rad/s op 1S
+    noload = noload or {"hip": 9.0, "knee": 9.0, "ankle": 9.0, "neck": 9.0, "head": 8.1}
     a = np.load(npz_path)
     m = mujoco.MjModel.from_xml_path(scene_xml); d = mujoco.MjData(m)
     names = [str(n) for n in a["joint_names"]]
@@ -190,7 +192,7 @@ def feasibility(npz_path, scene_xml, noload=None):
     print("\n== snelheid gewrichten t.o.v. de motoren (onbelast)")
     q = a["joint_pos"]; v = np.abs(np.diff(np.vstack([q, q[:1]]), axis=0)) * fps
     for j in ("hip_yaw", "hip_roll", "hip_pitch", "knee", "ankle", "neck_pitch", "head_pitch", "head_roll", "head_yaw"):
-        lim = noload["hip"] if (j.startswith("hip") or j.startswith("head")) else noload.get(j, noload["knee"])
+        lim = noload.get(j.split("_")[0], noload["knee"])
         cols = [names.index(f"{s}_{j}") for s in ("left", "right") if f"{s}_{j}" in names] or [names.index(j)]
         top = max(v[:, c].max() for c in cols)
         flag = "  TE SNEL" if top > 0.8 * lim else ""

@@ -36,7 +36,8 @@ SHELL_INERTIA_PARTS = {"head_shell", "body"}
 # Massa's van gekochte onderdelen (g). Overschreven door echte_massa_g als die is ingevuld.
 BOUGHT_MASS_G = {
     "drv1": 1.5, "drv2": 1.5, "drv3": 1.5,     # DRV8835-moduletjes zonder headers (schatting)
-    "batterij": 11.0,                          # 1S 450 mAh tiny-whoop-accu (schatting)
+    "batterij": 8.5,                           # Tattu 1S 300 mAh (schatting ~8-9 g)
+    "ESP3-CAM:1": 10.0,                        # ESP32-CAM met camera (schatting)
 }
 EXTRA_TORSO_PARTS = [  # (naam, massa_g, positie_mm) – nog niet in CAD
     ("controller_board", 5.0, (0.0, 0.0, 85.0)),   # Core2350B (schatting)
@@ -46,30 +47,26 @@ EXTRA_TORSO_PARTS = [  # (naam, massa_g, positie_mm) – nog niet in CAD
 # Welke onderdelen bewegen met welk gewricht. "torso" = romp.
 # Onderdelen die hier niet staan worden genegeerd (met een waarschuwing).
 LINKS = {
-    "torso": ["body", "body_armature", "batterij", "drv1", "drv2", "drv3",
-              "motor_yaw", "motor_yaw_rechts", "lager_yaw", "lager_yaw_rechts",
-              "neck1_servo"],
+    "torso": ["body", "body_armature", "batterij", "servo_yaw_rechts", "servo_yaw_links", "servo_neck"],
     # ---- linkerbeen
-    "L_hip_yaw": ["beugel_pitch_links", "motor_left_hip_pitch", "motor_left_hip_roll",
-                  "gear_motor1_links", "gear_motor2_links", "encoder_roll_links"],
-    "L_hip_roll": ["blok_differentieel_links", "magneetje_roll_links", "encoder_pitch_links"],
-    "L_hip_pitch": ["onderbeen_links", "plaat_links", "magneetje_pitch_links"],
-    "L_ankle": ["enkel_links", "servo_voet_links"],
+    "L_hip_yaw": ["beugel_pitch_links", "servo_differentieelA_links", "servo_differentieelB_links",
+                  "gear_motor1_links", "gear_motor2_links"],
+    "L_hip_roll": ["blok_differentieel_links"],
+    "L_hip_pitch": ["onderbeen_links", "magneet_pith_houder_links"],
+    "L_ankle": ["enkel_links", "servo_enkel_links"],
     "L_toe": ["teen_links", "zool_links", "servo_teen_links"],
     # ---- rechterbeen
-    "R_hip_yaw": ["beugel_pitch_rechts", "motor_roll_rechts", "motor_pitch_rechts",
-                  "gear_motor1_rechts", "gear_motor2_rechts", "encoder_roll_rechts"],
-    "R_hip_roll": ["blok_differentieel_rechts", "magneetje_roll_rechts", "encoder_pitch_rechts"],
-    "R_hip_pitch": ["onderbeen_rechts", "plaat_rechts", "magneetje_pitch_rechts"],
-    "R_ankle": ["enkel_rechts", "servo_voet_rechts"],
+    "R_hip_yaw": ["beugel_pitch_rechts", "servo_differentieelA_rechts", "servo_differentieelB_rechts",
+                  "gear_motor1_rechts", "gear_motor2_rechts"],
+    "R_hip_roll": ["blok_differentieel_rechts"],
+    "R_hip_pitch": ["onderbeen_rechts", "magneet_pith_houder_rechts"],
+    "R_ankle": ["enkel_rechts", "servo_enkel_rechts"],
     "R_toe": ["teen_rechts", "zool_rechts", "servo_teen_rechts"],
     # ---- nek en kop
-    "neck": ["neck", "motor_pitch_head", "encoder_pitch_head"],
-    "head_pitch": ["beugel_pitch_head", "beugel_roll_head", "motor_roll_head", "motor_yaw_head",
-                   "gear_motor1_head", "gear_motor2_head", "encoder_roll_head",
-                   "magneetje_pitch_head"],
-    "head_roll": ["blok_differentieel_head", "magneetje_roll_head"],
-    "head": ["head_base", "head_shell", "plaat_head", "gear_hoofd_head"],
+    "neck": ["neck"],
+    "head_pitch": ["head_shell", "servo_jaw", "ESP3-CAM:1"],
+    "head_roll": ["servo_pitch_head"],
+    "head": ["beugel_pitch_head", "servo_differentieelA_head", "servo_differentieelB_head", "blok_differentieel_head", "gear_motor1_head", "gear_motor2_head"],
     "jaw": ["jaw"],
 }
 
@@ -94,13 +91,13 @@ TREE = [
 
 # Bereik per gewricht (graden). Eerste schatting – stel bij na de motion study.
 RANGE_DEG = {
-    "left_hip_yaw": (-30, 30), "right_hip_yaw": (-30, 30),
+    "left_hip_yaw": (-20, 20), "right_hip_yaw": (-20, 20),
     "left_hip_roll": (-20, 20), "right_hip_roll": (-20, 20),
     "left_hip_pitch": (-60, 60), "right_hip_pitch": (-60, 60),
-    "left_ankle_pitch": (-60, 60), "right_ankle_pitch": (-60, 60),
-    "left_toe_pitch": (-40, 40), "right_toe_pitch": (-40, 40),
+    "left_ankle_pitch": (-50, 90), "right_ankle_pitch": (-50, 90),
+    "left_toe_pitch": (-60, 90), "right_toe_pitch": (-60, 90),
     "neck_pitch": (-30, 30), "head_pitch": (-30, 30),
-    "head_roll": (-20, 20), "head_yaw": (-60, 60), "jaw_pitch": (0, 30),
+    "head_roll": (-20, 20), "head_yaw": (-90, 90), "jaw_pitch": (0, 30),
 }
 
 # Actuatoren. Differentielen worden aangestuurd via twee motoren op fixed tendons:
@@ -111,27 +108,46 @@ DIFFERENTIALS = [
     ("R_hip", "right_hip_pitch", "right_hip_roll"),
     ("head", "head_yaw", "head_roll"),
 ]
-CORELESS_DIRECT = ["left_hip_yaw", "right_hip_yaw", "head_pitch"]
-SERVOS = ["left_ankle_pitch", "right_ankle_pitch", "left_toe_pitch", "right_toe_pitch",
-          "neck_pitch", "jaw_pitch"]
+CORELESS_DIRECT = []   # 2026-10-28: geen coreless-motoren meer, alles servo
+SERVOS = ["left_hip_yaw", "right_hip_yaw",
+          "left_ankle_pitch", "right_ankle_pitch", "left_toe_pitch", "right_toe_pitch",
+          "neck_pitch", "head_pitch", "jaw_pitch"]
+# Kleine servo (EMAX ES9251 II) voor alle kopgewrichten behalve de nek; de rest ES9051.
+SMALL_SERVO_JOINTS = {"head_pitch", "head_roll", "head_yaw", "jaw_pitch"}
+
+
+def actuator_class(jname):
+    return "servo_s" if jname in SMALL_SERVO_JOINTS else "servo"
 
 # Ruwe actuatorparameters (SI). TODO: vervangen door meetwaarden van de testbank.
 CORELESS = dict(kp=0.6, kv=0.006, force=0.05, armature=1.0e-5, damping=2e-4, frictionloss=2e-3)
 # Walk-model: differentieelgewrichten krijgen samen het koppel van twee motoren
 # (tau_pitch = tauA + tauB, tau_roll = tauA - tauB).
 DIFF_JOINT_FORCE_FACTOR = 2.0
-SERVO = dict(kp=2.0, kv=0.02, force=0.08, armature=2.0e-5, damping=5e-4, frictionloss=3e-3)
+# Servokoppel bij 4,8 V uit de specs, geschaald naar een 1S-accu (3,7 V nominaal: x0,77).
+SUPPLY_FACTOR = 3.7 / 4.8
+KGFCM = 0.0980665          # 1 kgf.cm in N.m
+# EMAX ES9051: 0,8 kgf.cm @ 4,8 V, 4,1 g
+SERVO = dict(kp=2.0, kv=0.02, force=round(0.8 * KGFCM * SUPPLY_FACTOR, 4),
+             armature=2.0e-5, damping=5e-4, frictionloss=3e-3)
+# EMAX ES9251 II: 0,25 kgf.cm @ 4,8 V, 2,5 g (kop)
+SERVO_S = dict(kp=0.6, kv=0.006, force=round(0.25 * KGFCM * SUPPLY_FACTOR, 4),
+               armature=8.0e-6, damping=2e-4, frictionloss=1.5e-3)
+SERVO_MASS_G = {"servo": 4.1, "servo_s": 2.5}
 # Onbelaste uitgaande toeren (rad/s). Een DC-motor aan een verzadigde H-brug levert
 # tau = tau_stall * (u - w / w0), |u| <= 1: forcerange = stall-koppel en de tegen-EMK
 # werkt als extra gewrichtsdemping tau_stall / w0. Boven w0 kan het gewricht dus niet.
 NOLOAD_RAD_S = {
     "coreless": 300 * 2 * math.pi / 60,   # 300 rpm-versie (150 rpm: 15.7)
-    "servo": math.radians(60) / 0.10,      # 4 g servo, ~0.10 s/60 graden -> 10.5 rad/s
+    "servo": math.radians(60) / 0.09 * SUPPLY_FACTOR,    # ES9051 0,09 s/60 gr @4,8 V, op 1S
+    "servo_s": math.radians(60) / 0.10 * SUPPLY_FACTOR,  # ES9251 II: snelheid nog niet bekend, aanname
 }
+CLASS_PARAMS = {"servo": SERVO, "servo_s": SERVO_S, "coreless": CORELESS}
 
 
 def joint_damping(cls, diff=False):
-    base, force = (SERVO, SERVO["force"]) if cls == "servo" else (CORELESS, CORELESS["force"])
+    base = CLASS_PARAMS[cls]
+    force = base["force"]
     if diff:
         force *= DIFF_JOINT_FORCE_FACTOR
     return base["damping"] + force / NOLOAD_RAD_S[cls]
@@ -206,6 +222,9 @@ def read_parts(path):
                 mass, src = float(real), "gewogen"
             elif name in BOUGHT_MASS_G:
                 mass, src = BOUGHT_MASS_G[name], "schatting"
+            elif name.startswith(("servo", "serva")):
+                small = name.endswith("_head") or name == "servo_jaw"
+                mass, src = SERVO_MASS_G["servo_s" if small else "servo"], "specs"
             elif is_printed(name):
                 dens = TPU if name.startswith("zool") else RESIN
                 mass, src = m_fusion * dens / STEEL, "omgerekend"
@@ -362,7 +381,7 @@ def build(joints, parts, meshdir=Path("meshes"), walk=False):
         rel = sub(o, origin[parent])
         lines.append(f'{ind}<body name="{link}" pos="{mm(rel)}">')
         axis = joints[jname][1]
-        cls = "servo" if jname in SERVOS else "coreless"
+        cls = actuator_class(jname)
         if walk and jn(jname).startswith("passive_"):
             cls = "passive"
         lo, hi = RANGE_DEG[jname]
@@ -392,6 +411,10 @@ def build(joints, parts, meshdir=Path("meshes"), walk=False):
              f'damping="{SERVO["damping"]}" frictionloss="{SERVO["frictionloss"]}"/>'
              f'<position kp="{SERVO["kp"]}" kv="{SERVO["kv"]}" '
              f'forcerange="-{SERVO["force"]} {SERVO["force"]}"/></default>')
+    x.append(f'    <default class="servo_s"><joint armature="{SERVO_S["armature"]}" '
+             f'damping="{SERVO_S["damping"]}" frictionloss="{SERVO_S["frictionloss"]}"/>'
+             f'<position kp="{SERVO_S["kp"]}" kv="{SERVO_S["kv"]}" '
+             f'forcerange="-{SERVO_S["force"]} {SERVO_S["force"]}"/></default>')
     x.append('    <default class="visual"><geom contype="0" conaffinity="0" group="2" rgba="0.82 0.82 0.80 1"/></default>')
     x.append('    <default class="visual_dark"><geom contype="0" conaffinity="0" group="2" rgba="0.12 0.12 0.13 1"/></default>')
     x.append('    <default class="part"><geom contype="0" conaffinity="0" group="2" rgba="0.12 0.12 0.13 1"/></default>')
@@ -436,12 +459,12 @@ def build(joints, parts, meshdir=Path("meshes"), walk=False):
         for link, parent, jname in dfs:   # zelfde volgorde als de gewrichten
             if jn(jname).startswith("passive_"):
                 continue
-            cls = "servo" if jname in SERVOS else "coreless"
+            cls = actuator_class(jname)
             lo, hi = RANGE_DEG[jname]
             extra = ""
             if any(jname in (o, c) for _, o, c in DIFFERENTIALS):
                 # Beide motoren werken samen op elk differentieelgewricht: tot 2x motorkoppel.
-                fmax = CORELESS["force"] * DIFF_JOINT_FORCE_FACTOR
+                fmax = CLASS_PARAMS[cls]["force"] * DIFF_JOINT_FORCE_FACTOR
                 extra = f' forcerange="-{fmax:g} {fmax:g}"'
             x.append(f'    <position name="{jn(jname)}" class="{cls}" joint="{jn(jname)}" '
                      f'ctrlrange="{math.radians(lo):.4f} {math.radians(hi):.4f}"{extra}/>')
@@ -464,13 +487,13 @@ def build(joints, parts, meshdir=Path("meshes"), walk=False):
     x.append('  <actuator>')
     for name, out_j, car_j in DIFFERENTIALS:
         for s in ("A", "B"):
-            x.append(f'    <position name="{name}_motor_{s}" class="coreless" tendon="{name}_{s}" ctrlrange="-2.5 2.5"/>')
+            x.append(f'    <position name="{name}_motor_{s}" class="{actuator_class(out_j)}" tendon="{name}_{s}" ctrlrange="-2.5 2.5"/>')
     for j in CORELESS_DIRECT:
         lo, hi = RANGE_DEG[j]
         x.append(f'    <position name="{j}" class="coreless" joint="{j}" ctrlrange="{math.radians(lo):.4f} {math.radians(hi):.4f}"/>')
     for j in SERVOS:
         lo, hi = RANGE_DEG[j]
-        x.append(f'    <position name="{j}" class="servo" joint="{j}" ctrlrange="{math.radians(lo):.4f} {math.radians(hi):.4f}"/>')
+        x.append(f'    <position name="{j}" class="{actuator_class(j)}" joint="{j}" ctrlrange="{math.radians(lo):.4f} {math.radians(hi):.4f}"/>')
     x.append('  </actuator>')
     x.append('  <sensor>')
     x.append('    <gyro name="imu_gyro" site="imu"/>')

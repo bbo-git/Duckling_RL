@@ -147,7 +147,7 @@ def policy_obs(robot, tgt, twist):
 
 
 def run(pol, grid, bearing=0.0, v=0.0, w=0.0, seconds=8.0, phase=0.0, toward=False):
-    r = P.Duckling("scene_walk.xml", grid=grid); r.gait_clock = True; r.phase = phase
+    r = P.Duckling("duckling/src/mjlab_microduck/robot/duckling/scene_walk.xml", grid=grid); r.gait_clock = True; r.phase = phase
     t = Target(r, bearing, v, w); D, B, face_t = [], [], None
     if toward: t.toward()
     p0 = r.d.qpos[:2].copy()
@@ -197,7 +197,7 @@ def viewer(pol, grid):
     drag) or step it with the arrow keys (5 cm, in the view's ground plane: up = away from
     you). Its speed and walking direction follow from how you move it."""
     import mujoco.viewer
-    r = P.Duckling("scene_walk.xml", grid=grid, model=_scene_with_person("scene_walk.xml").compile()); r.gait_clock = True
+    r = P.Duckling("duckling/src/mjlab_microduck/robot/duckling/scene_walk.xml", grid=grid, model=_scene_with_person("duckling/src/mjlab_microduck/robot/duckling/scene_walk.xml").compile()); r.gait_clock = True
     mid = r.m.body("persoon").mocapid[0]
     t = Target(r); flags = dict(reset=False); step = 0.05
     r.d.mocap_pos[mid][:2] = t.p
