@@ -130,6 +130,13 @@ SWING_LIFT = 0.010            # m (V1). V2: per stijl 0.8 x lift_m van het loopj
 IMITATION_STD = 0.25          # rad, RMS joint error that gives exp(-1)
 LEG_JOINTS = [f"{s}_{j}" for s in ("left", "right")
               for j in ("hip_yaw", "hip_roll", "hip_pitch", "knee", "ankle")]
+# 2026-10-30: bereik van de servodoelen (graden, t.o.v. HOME = CAD-nul) = gewrichtsbereik in robot_walk.xml
+JOINT_TARGET_RANGE_DEG = {
+    r"^(left|right)_hip_yaw$": (-20, 20), r"^(left|right)_hip_roll$": (-20, 20),
+    r"^(left|right)_hip_pitch$": (-60, 60), r"^(left|right)_knee$": (-50, 90),
+    r"^(left|right)_ankle$": (-60, 90), r"^neck_pitch$": (-30, 30), r"^head_pitch$": (-30, 30),
+    r"^head_roll$": (-20, 20), r"^head_yaw$": (-90, 90),
+}
 # Per-joint weight in the imitation error. The walk cycle is a style guide for the
 # fore-aft leg motion (hip pitch, knee, ankle). Hip roll/yaw are left mostly free: the
 # animation has no sideways weight shift, so the policy must add its own sway to stay
@@ -1272,6 +1279,11 @@ def make_duckling_velocity_env_cfg(play: bool = False, rough: bool = False) -> M
     if "push_robot" in cfg.events:
         r = 0.3 * SCALE
         cfg.events["push_robot"].params["velocity_range"] = {"x": (-r, r), "y": (-r, r)}
+    # 2026-10-30: servodoelen binnen het gewrichtsbereik (zoals de firmware straks ook doet).
+    # Run 900 stuurde doelen tot 300 gr (!): heup-yaw permanent +200 gr = tegen de aanslag
+    # gedrukt (V-voeten, gewricht "op slot" voor stabiliteit). Een echte servo kan dat niet.
+    act_cfg = cfg.actions["joint_pos"]
+    act_cfg.clip = {k: (math.radians(lo), math.radians(hi)) for k, (lo, hi) in JOINT_TARGET_RANGE_DEG.items()}
     # 2026-10-30: massa per lichaam -10 .. +15 % (was alleen de romp +-5 %): het echte robotje
     # weegt waarschijnlijk meer dan het model (hars, draden, schroeven)
     if "randomize_mass_inertia" in cfg.events:

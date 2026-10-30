@@ -174,6 +174,8 @@ class Duckling:
         self.qadr = np.array([self.m.jnt_qposadr[j] for j in self.jids])
         self.vadr = np.array([self.m.jnt_dofadr[j] for j in self.jids])
         self.names = [mujoco.mj_id2name(self.m, mujoco.mjtObj.mjOBJ_JOINT, j) for j in self.jids]
+        self.jlo = np.array([self.m.jnt_range[j][0] for j in self.jids])
+        self.jhi = np.array([self.m.jnt_range[j][1] for j in self.jids])
         # servomodel: XML-actuators krachtloos, koppels via qfrc_applied (zoals in de training)
         self.servo = None
         if not os.environ.get("DUCK_GEEN_SERVO"):      # DUCK_GEEN_SERVO=1: oude XML-servo's (policies van voor 29-10 middag)
@@ -232,7 +234,7 @@ class Duckling:
         self.phase = (self.phase + TIMESTEP * DECIMATION / cyc) % 1.0
         self.last_action = action.copy()
         self.d.ctrl[:self.nj] = self.home + action           # targets relative to HOME
-        target = self.d.ctrl[:self.nj].copy()
+        target = np.clip(self.d.ctrl[:self.nj], self.jlo, self.jhi)   # 2026-10-30: zoals training/firmware
         for _ in range(DECIMATION):
             self.d.qfrc_applied[:] = 0.0
             if self.servo is not None:
