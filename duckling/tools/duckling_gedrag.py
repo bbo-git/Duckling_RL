@@ -255,6 +255,10 @@ def main():
         v100 = np.array([grids[keys["style"]].v100])
         vx, wz, head, fix = beh.step(p, DT, v100)
         head = np.clip(head[0], -head_lim, head_lim)
+        # 2026-10-30: de begrensde kopstand terug naar de toestandsmachine (zoals in de training):
+        # anders rekent hij met een kophoek die de kop niet heeft -> draait de verkeerde kant op
+        beh.h_yaw = np.array([head[2]])
+        beh.h_elev = np.array([head[1] - head[0]])
         state = int(beh.state[0])
         # houding: RUST = zitten; uit RUST eerst opstaan (netwerk uit, commando 0)
         want_sit = state == B.REST
