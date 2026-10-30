@@ -212,7 +212,8 @@ def make_duckling_tracker_env_cfg(play: bool = False, rough: bool = False):
     R["height_tracking"] = RewardTermCfg(func=height_tracking, weight=1.0)
     R["speed_tracking"] = RewardTermCfg(func=speed_tracking, weight=2.0)
     R["heading_hold"] = RewardTermCfg(func=heading_hold, weight=1.5)
-    R["upright"].weight = 1.0
+    if "upright" in R:      # 2026-10-15: the walk task no longer has it
+        R["upright"].weight = 1.0
     # the waddle gaits stand up to ~75 mm wide
     R["stance_width"] = RewardTermCfg(
         func=_stance_too_wide, weight=-100.0,

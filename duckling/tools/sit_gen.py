@@ -34,6 +34,7 @@ import numpy as np
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from gait_gen import (JOINT_ORDER, DuckKinematics, fast_model, fast_render)  # noqa: E402
+import duckling_servo as dsv  # noqa: E402
 
 FPS = 50.0
 HOME_Z = 0.0592
@@ -187,28 +188,44 @@ def sit_pose(planner, p):
     return g["joint_pos"][i].copy(), float(g["root_pos"][i][2]), g["root_quat"][i].copy()
 
 
+def servo_setup(m):
+    """XML-servo's krachtloos, servomodel (incl. differentiëlen 1,5x) levert de koppels."""
+    act = np.array([m.actuator(nm).id for nm in JOINT_ORDER])
+    m.actuator_gainprm[act, :] = 0.0
+    m.actuator_biasprm[act, :] = 0.0
+    dadr = np.array([m.jnt_dofadr[m.joint(nm).id] for nm in JOINT_ORDER])
+    dsv.apply_armature(m, JOINT_ORDER, dadr)
+    return dsv.ServoModel(JOINT_ORDER), dadr
+
+
+def servo_step(m, d, servo, qadr, dadr, target):
+    d.qfrc_applied[dadr] = servo.torques(d.qpos[qadr], d.qvel[dadr], target)
+    mujoco.mj_step(m, d)
+
+
 def simulate(spec_or_model, g, scene_qadr=None, settle_s=0.5):
     """Speelt de beweging af als servo-doelen in de fysica. Geeft de gemeten data terug."""
     m = spec_or_model if isinstance(spec_or_model, mujoco.MjModel) else spec_or_model.compile()
     d = mujoco.MjData(m)
     qadr = np.array([m.jnt_qposadr[m.joint(nm).id] for nm in JOINT_ORDER])
-    act = np.array([m.actuator(nm).id for nm in JOINT_ORDER])
+    servo, dadr = servo_setup(m)
     d.qpos[:3] = g["root_pos"][0]; d.qpos[3:7] = g["root_quat"][0]; d.qpos[qadr] = g["joint_pos"][0]
     d.qpos[2] += 0.0005
-    d.ctrl[act] = g["joint_pos"][0]
     for _ in range(int(settle_s / m.opt.timestep)):
-        mujoco.mj_step(m, d)
+        servo_step(m, d, servo, qadr, dadr, g["joint_pos"][0])
     sub = max(1, int(round(1 / FPS / m.opt.timestep)))
     n = len(g["t"])
-    frc = np.zeros((n, len(JOINT_ORDER))); pitch = np.zeros(n); roll = np.zeros(n)
+    keys = None
+    frc = None; pitch = np.zeros(n); roll = np.zeros(n)
     rootz = np.zeros(n); qv = np.zeros((n, len(JOINT_ORDER))); trunk_load = np.zeros(n)
     for i in range(n):
-        d.ctrl[act] = g["joint_pos"][i]
-        f = np.zeros(len(JOINT_ORDER))
+        f = None
         for _ in range(sub):
-            mujoco.mj_step(m, d)
-            f = np.maximum(f, np.abs(d.actuator_force[act]))
-        frc[i] = f
+            servo_step(m, d, servo, qadr, dadr, g["joint_pos"][i])
+            if keys is None:
+                keys = list(servo.last); frc = np.zeros((n, len(keys))); spd = np.zeros((n, len(keys)))
+            u = np.array([abs(servo.last[k][0]) for k in keys]); w = np.array([abs(servo.last[k][1]) for k in keys])
+            frc[i] = np.maximum(frc[i], u); spd[i] = np.maximum(spd[i], w)
         R = d.xmat[1].reshape(3, 3)
         pitch[i] = math.atan2(-R[2, 0], R[2, 2]); roll[i] = math.atan2(R[2, 1], R[2, 2])
         rootz[i] = d.qpos[2]; qv[i] = d.qpos[qadr]
@@ -218,9 +235,8 @@ def simulate(spec_or_model, g, scene_qadr=None, settle_s=0.5):
             if 1 in (m.geom_bodyid[con.geom1], m.geom_bodyid[con.geom2]):   # romp raakt de vloer
                 mujoco.mj_contactForce(m, d, c, cf)
                 trunk_load[i] += abs(cf[0])
-    lim = np.array([m.actuator_forcerange[a][1] for a in act])
     weight = float(m.body_subtreemass[1] * 9.81)
-    return dict(force=frc, limit=lim, pitch=pitch, roll=roll, rootz=rootz, qpos=qv, model=m, data=d,
+    return dict(use=frc, speed=spd, servos=keys, pitch=pitch, roll=roll, rootz=rootz, qpos=qv, model=m, data=d,
                 trunk_load=trunk_load / weight)
 
 
@@ -235,18 +251,18 @@ def report(planner, g, sim):
     ik = g["ik_err"].max() * 1000
     print(f"IK: voeten {'op hun plek' if ik < 1 else f'NIET bereikt (tot {ik:.1f} mm ernaast): gewrichtslimiet'}")
     # koppel per fase
-    use = sim["force"] / sim["limit"]
+    use, servos = sim["use"], sim["servos"]
     fases = [f for f in ("zakken", "achterover", "zitten", "voorover", "opstaan") if (ph == f).any()]
-    print("koppel (piek % van servo):  " + "".join(f"{f:>11s}" for f in fases))
+    print("servo (piek % van stall):  " + "".join(f"{f:>11s}" for f in fases) + "   max snelheid")
     worst = 0
-    for nm in JOINT_ORDER:
-        if nm.startswith("right"):
+    for j, nm in enumerate(servos):
+        if nm.startswith("right") or nm.startswith("heup_R"):
             continue
-        j = JOINT_ORDER.index(nm)
         row = [100 * use[ph == fs, j].max() for fs in fases]
         worst = max(worst, max(row))
         flag = "  <-- TE ZWAAR" if max(row) >= 99 else ("  (krap)" if max(row) > 75 else "")
-        print(f"  {nm.replace('left_', ''):24s}" + "".join(f"{v:10.0f}%" for v in row) + flag)
+        print(f"  {nm.replace('left_', ''):24s}" + "".join(f"{v:10.0f}%" for v in row)
+              + f"   {100 * sim['speed'][:, j].max():5.0f}%" + flag)
     # omvallen
     dp = np.degrees(np.abs(sim["pitch"] - np.array([_pitch(q) for q in g["root_quat"]])))
     dr = np.degrees(np.abs(sim["roll"]))
@@ -340,7 +356,7 @@ def view(planner, p, scene, save_path):
     m = spec.compile(); d = mujoco.MjData(m)
     sim_m = physics_spec(scene).compile()
     qadr = np.array([m.jnt_qposadr[m.joint(n).id] for n in JOINT_ORDER])
-    act = np.array([m.actuator(n).id for n in JOINT_ORDER])
+    servo, dadr = servo_setup(m)
     sl = {name: (m.actuator(label).id, sc) for name, label, lo, hi, sc in SLIDERS}
     st = dict(p=p, g=planner.generate(p), phys=False, dirty=False)
 
@@ -386,10 +402,9 @@ def view(planner, p, scene, save_path):
                 d.qpos[:3] = g["root_pos"][i]; d.qpos[3:7] = g["root_quat"][i]; d.qpos[qadr] = g["joint_pos"][i]
                 d.qvel[:] = 0
             if st["phys"]:
-                d.ctrl[act] = g["joint_pos"][i]
                 t_end = d.time + 1 / FPS
                 while d.time < t_end:
-                    mujoco.mj_step(m, d)
+                    servo_step(m, d, servo, qadr, dadr, g["joint_pos"][i])
             else:
                 mujoco.mj_forward(m, d)
             v.sync()

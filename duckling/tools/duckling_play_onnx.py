@@ -36,6 +36,7 @@ Keys in the viewer (keyboard focus on the MuJoCo window):
 """
 
 import argparse
+import os
 import time
 
 import mujoco
@@ -43,6 +44,7 @@ import mujoco
 FOLLOW = [False]  # camera follows the robot; G in the viewer toggles (default off)
 import numpy as np
 import onnxruntime as ort
+import duckling_servo as DS      # 2026-10-29: servomodel (koppel-snelheid, differentiëlen 1,5x) = training
 
 # --- must match training -----------------------------------------------------
 TIMESTEP = 0.002
@@ -52,7 +54,7 @@ SPAWN_Z = 0.0602                     # V2 (V1: 0.059)
 # relative to HOME, actions are offsets from HOME.
 HOME_POS_DEG = {"hip_pitch": 0.0, "knee": 0.0, "ankle": 0.0}   # V2; V1 was -11.8 / -8.6 / -20.3 (--v1-home)
 # stijlen in dezelfde volgorde als STYLES in duckling_velocity_env_cfg.py
-STYLES = [("normaal", "grids/gait_grid_normaal_v3.npz"), ("parmantig", "grids/gait_grid_parmantig_v3.npz")]
+STYLES = [("normaal", "grids/gait_grid_normaal_v3.npz"), ("parmantig", "grids/gait_grid_parmantig_v5.npz")]
 TORSO = "trunk_base"
 LIMITS = dict(vx=(0.0, 0.12), vy=(0.0, 0.0), wz=(-0.6, 0.6))   # = training ranges (lopen: vooruit + draaien)
 CYCLE_S = 1.0                        # walk-cycle length (s), walk_cycle.npz "cycle_s"
@@ -172,6 +174,12 @@ class Duckling:
         self.qadr = np.array([self.m.jnt_qposadr[j] for j in self.jids])
         self.vadr = np.array([self.m.jnt_dofadr[j] for j in self.jids])
         self.names = [mujoco.mj_id2name(self.m, mujoco.mjtObj.mjOBJ_JOINT, j) for j in self.jids]
+        # servomodel: XML-actuators krachtloos, koppels via qfrc_applied (zoals in de training)
+        self.servo = None
+        if not os.environ.get("DUCK_GEEN_SERVO"):      # DUCK_GEEN_SERVO=1: oude XML-servo's (policies van voor 29-10 middag)
+            DS.neutralize_xml_actuators(self.m, self.nj)
+            DS.apply_armature(self.m, self.names, self.vadr)
+            self.servo = DS.ServoModel(self.names)
         head_order = ["neck_pitch", "head_pitch", "head_yaw", "head_roll"]
         assert all(h in self.names for h in head_order), "head joints missing"
         self.torso = self.m.body(TORSO).id
@@ -184,6 +192,7 @@ class Duckling:
 
     def reset(self):
         mujoco.mj_resetData(self.m, self.d)
+        self.d.qfrc_applied[:] = 0.0
         self.d.qpos[2] = SPAWN_Z
         self.d.qpos[3:7] = [1, 0, 0, 0]
         self.d.qpos[self.qadr] = self.home
@@ -223,7 +232,11 @@ class Duckling:
         self.phase = (self.phase + TIMESTEP * DECIMATION / cyc) % 1.0
         self.last_action = action.copy()
         self.d.ctrl[:self.nj] = self.home + action           # targets relative to HOME
+        target = self.d.ctrl[:self.nj].copy()
         for _ in range(DECIMATION):
+            self.d.qfrc_applied[:] = 0.0
+            if self.servo is not None:
+                self.d.qfrc_applied[self.vadr] = self.servo.torques(self.d.qpos[self.qadr], self.d.qvel[self.vadr], target)
             mujoco.mj_step(self.m, self.d)
         self.steps += 1
 

@@ -394,8 +394,9 @@ def build(joints, parts, meshdir=Path("meshes"), walk=False):
         if cls != "passive":
             is_diff = any(jname in (o_, c_) for _, o_, c_ in DIFFERENTIALS)
             damp = f' damping="{joint_damping(cls, is_diff):.5g}"'
-        lines.append(f'{ind}  <joint name="{jn(jname)}" class="{cls}" axis="{f(axis)}" '
-                     f'range="{math.radians(lo):.4f} {math.radians(hi):.4f}"{damp}/>')
+        if not (walk and cls == "passive"):   # 2026-10-29: kaak vast in het loopmodel (flapte mee met elke stap)
+            lines.append(f'{ind}  <joint name="{jn(jname)}" class="{cls}" axis="{f(axis)}" '
+                         f'range="{math.radians(lo):.4f} {math.radians(hi):.4f}"{damp}/>')
         lines += geoms(link, ind + "  ")
         for c, cj in children.get(link, []):
             lines += body(c, link, cj, ind + "  ")

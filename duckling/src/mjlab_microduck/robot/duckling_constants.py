@@ -35,7 +35,11 @@ def get_walk_spec() -> mujoco.MjSpec:
     assert DUCKLING_WALK_XML.exists(), (
         f"{DUCKLING_WALK_XML} not found - generate it with gen_duck_mjcf.py --walk"
     )
-    return mujoco.MjSpec.from_file(str(DUCKLING_WALK_XML))
+    spec = mujoco.MjSpec.from_file(str(DUCKLING_WALK_XML))
+    if USE_SERVO_MODEL:   # 2026-10-29: de <position>-actuators uit de XML eruit; het servomodel levert de koppels
+        for a in list(spec.actuators):
+            spec.delete(a)
+    return spec
 
 
 # Standing pose. In the CAD zero pose the CoM sits ~10 mm in front of the soles, so the
@@ -80,12 +84,21 @@ actuators = XmlActuatorCfg(
     delay_max_lag=2,
 )
 
+# 2026-10-29 (V2): servomodel met koppel-snelheidscurve en de differentiëlen als 2 servo's via 1,5x
+# (duckling_actuators.py). False = de oude XML-position-actuators (gewricht los, 2x servo).
+USE_SERVO_MODEL = True
+if USE_SERVO_MODEL:
+    from mjlab_microduck.robot.duckling_actuators import duckling_servo_actuators
+    _ACTUATORS = duckling_servo_actuators()
+else:
+    _ACTUATORS = (actuators,)
+
 DUCKLING_WALK_ROBOT_CFG = EntityCfg(
     spec_fn=get_walk_spec,
     init_state=HOME_FRAME,
     collisions=(FULL_COLLISION,),
     articulation=EntityArticulationInfoCfg(
-        actuators=(actuators,),
+        actuators=_ACTUATORS,
         soft_joint_pos_limit_factor=0.9,
     ),
 )

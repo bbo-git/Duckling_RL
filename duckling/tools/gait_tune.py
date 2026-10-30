@@ -80,15 +80,13 @@ class Scorer:
         g = k.generate(p)
         n = len(g["t"]); fps = float(g["fps"])
         q = g["joint_pos"]
-        # snelheden
-        v = np.abs(np.diff(np.vstack([q, q[:1]]), axis=0)) * fps
-        over, top = 0.0, {}
-        for j, nm in enumerate(JOINT_ORDER):
-            grp = nm.split("_")[1] if nm.startswith(("left", "right")) else nm.split("_")[0]
-            key = nm.replace("left_", "").replace("right_", "")
-            lim = LIM.get(grp, 9.0) * SPEED_FRAC
-            top[key] = max(top.get(key, 0), v[:, j].max())
-            over += np.clip(v[:, j] - lim, 0, None).max()
+        # 2026-10-29: snelheden per SERVO (differentiëlen: 1,5 x (pitch +- roll)), niet per gewricht
+        import duckling_servo as DS
+        sp = DS.servo_speeds(q, fps, JOINT_ORDER)
+        over = sum(max(0.0, v - SPEED_FRAC * lim) for v, lim in sp.values())
+        w = DS.worst_by_group(sp)
+        top = {"hip_pitch": w["heupservo"][0], "knee": w["enkel"][0], "ankle": w["teen"][0],
+               "hip_yaw": w["heup_yaw"][0], "head": w["kop"][0]}
         # balans (ZMP), zoolkanteling, voetslip
         coms, polys, roll, pitch, slip = np.zeros((n, 3)), [], [], [], []
         prev = None
@@ -190,13 +188,19 @@ def tune(scorer, p0, free, iters, seed=0, log=print):
                 rr["top"][k] = max(rr["top"][k], r["top"][k])
         return tot / len(GRID_VARIANTS), rr
 
+    def evaluate_keep(p):   # karakter houden: niet trager worden dan 95% van de start
+        s, r = evaluate(p)
+        return s + 400 * max(0.0, v_min[0] - r["speed"]), r
+
+    v_min = [0.0]
     best, best_r = evaluate(P(x))
+    v_min[0] = 0.95 * best_r["speed"]
     log(f"start: score {best:.2f}  {fmt(best_r)}")
     sigma = 0.15
     t0 = time.time()
     for it in range(iters):
         cand = np.clip(x + sigma * (hi - lo) * rng.standard_normal(len(x)) * (rng.random(len(x)) < 0.4), lo, hi)
-        s, r = evaluate(P(cand))
+        s, r = evaluate_keep(P(cand))
         if s < best:
             x, best, best_r = cand, s, r
             sigma = min(0.3, sigma * 1.2)
@@ -209,7 +213,7 @@ def tune(scorer, p0, free, iters, seed=0, log=print):
 def fmt(r):
     t = r["top"]
     return (f"ZMP buiten {100 * r['zmp_out']:.0f}% (max {r['zmp_worst']:.0f} mm), zool-roll gem {r['roll_mean']:.1f} max {r['roll_max']:.0f} gr, "
-            f"heup {t['hip_pitch']:.1f} enkel {t['knee']:.1f} teen {t['ankle']:.1f} rad/s, botsing {r['collide_mm']:.1f} mm, limiet {r['lim_hit']}, "
+            f"heupservo {t['hip_pitch']:.1f} enkel {t['knee']:.1f} teen {t['ankle']:.1f} rad/s, botsing {r['collide_mm']:.1f} mm, limiet {r['lim_hit']}, "
             f"{r['speed'] * 100:.1f} cm/s")
 
 

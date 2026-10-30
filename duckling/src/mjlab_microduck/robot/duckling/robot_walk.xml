@@ -121,7 +121,6 @@
               <geom name="servo_jaw" class="visual_dark" type="mesh" mesh="servo_jaw" pos="0.003203 0.0002 -0.134222" mass="0.0025"/>
               <geom name="ESP3-CAM:1" class="part" type="sphere" size="0.003" pos="0.032027 0.002525 0.010375" mass="0.01"/>
               <body name="jaw" pos="6.2e-05 -0.033044 0.00539">
-                <joint name="passive_jaw" class="passive" axis="0 1 0" range="0.0000 0.5236"/>
                 <geom name="jaw" class="visual" type="mesh" mesh="jaw" pos="0.003141 0.033244 -0.139612" mass="0.0105596"/>
               </body>
             </body>

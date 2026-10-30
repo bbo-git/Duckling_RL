@@ -24,13 +24,16 @@ en later op de RP2350 (overzetten naar C/MicroPython: alleen + - * / min max abs
        ORBIT     persoon danst op zijn plek: rondje eromheen, kop naar binnen
        TERUG     persoon te dichtbij: achteruit
        ZOEKEN    persoon kwijt: draaien naar waar hij het laatst was, kop zoekt
-   Tabel (rij = intensiteit, kolom = grootte):
-       licht            : blijft zitten/staan, kop volgt
-       middel           : klein/middel = NADEREN, groot = KIJKEN (opstaan, aankijken)
-       sterk  klein     : NADEREN (sneller)
+   Regels (2026-10-29 avond, Jairo):
+       niets beweegt (intensiteit 0) : niets in beeld -> blijft zitten, kijkt rond
+       licht                         : blijft zitten, kop volgt het punt
+       middel of sterk               : erheen om te verkennen (NADEREN tot 50 cm, dan KIJKEN)
        sterk  middel/groot + punt beweegt : VOLGEN
        sterk  groot     + punt stil       : ORBIT
-       te dichtbij -> TERUG, ~10 s niets -> RUST, kwijt -> ZOEKEN (5 s) -> RUST
+       te dichtbij (< 33 cm)              : TERUG (ook vanuit zitten)
+       ~10 s niets -> RUST, kwijt -> ZOEKEN (5 s) -> RUST
+   GROOTTE is de grootte zoals de camera hem ziet: dezelfde hand is dichtbij groter
+   (schijnbaar = echte grootte x 50 cm / afstand).
    De kop beweegt als een vogel: stil fixeren, dan een snelle draai (saccade).
 
 3. SIMULATIE (alleen training): virtuele persoon + nep-ESP met ruis, vertraging en uitval.
@@ -68,10 +71,10 @@ ORBIT_BEAR = math.radians(85)   # persoon ~opzij tijdens het rondje (kop 63 gr +
 ORBIT_FRAC = 0.5          # fractie van de 100%-snelheid
 HEAD_YAW_MAX = 1.1        # rad (63 gr) = HEAD_CAPS van de training (rondje: persoon op ~90 gr)
 HEAD_ELEV_MAX, HEAD_ELEV_MIN = 0.5, -0.25   # rad: nek + kop samen (elk max 0.25)
-SACCADE_THR = math.radians(7)   # kop draait pas als het doel > 7 gr verschoven is ...
-FIX_MIN = 0.35            # ... en hij minstens zo lang heeft gefixeerd (s)
-SACCADE_RATE = 5.0        # rad/s: snelle kopdraai (servo ~8)
-LOOK_AMP = 0.6            # rad: rondkijken in rust/zoeken
+SACCADE_THR = math.radians(12)   # kop draait pas als het doel > 12 gr verschoven is (was 7: te spastisch) ...
+FIX_MIN = 0.6            # ... en hij minstens zo lang heeft gefixeerd (s)
+SACCADE_RATE = 3.0        # rad/s: snelle kopdraai (servo ~8)
+LOOK_AMP = 1.0            # rad: rondkijken in rust/zoeken (2026-10-29: 0.6 -> 1.0, zag niets opzij)
 
 
 # ------------------------------------------------------------------ numpy/torch helpers
@@ -186,7 +189,7 @@ class Behavior:
         far = (d - FOLLOW_DIST > FAR_AGAIN) | (absv(b) > SIDE_AGAIN)
         want_follow = seen & moving & strong & ~small
         want_orbit = seen & (self.t_dance > DANCE_HOLD) & (self.t_nodance < 0.5)
-        want_approach = seen & ((medium & ~big) | (strong & ~want_follow & ~want_orbit)) & far
+        want_approach = seen & (medium | (strong & ~want_follow & ~want_orbit)) & far
         want_watch = seen & (mint > 1.5) & ~far
         too_close = seen & vis & (d < BACK_DIST)
 
@@ -206,7 +209,8 @@ class Behavior:
         self._go((S == ORBIT) & (self.t_nodance > DANCE_END), APPROACH)
         self._go((S == ORBIT) & want_follow & (self.t_dance < 0.1), FOLLOW)
         # te dichtbij
-        self._go(((S == WATCH) | (S == APPROACH) | (S == FOLLOW) | (S == ORBIT)) & too_close, BACKOFF)
+        self._go(((S == WATCH) | (S == APPROACH) | (S == FOLLOW) | (S == ORBIT)
+                  | ((S == REST) & (mint > 0.5))) & too_close, BACKOFF)
         self._go((S == BACKOFF) & (d > BACK_RELEASE), WATCH)
         # kwijt
         lost_any = ~seen
@@ -286,6 +290,7 @@ ESP_DELAY = 4            # control steps (80 ms)
 DETECT_LAT = (0.3, 1.0)  # s voordat de ESP een nieuwe beweging herkent
 FOV_H, FOV_V = math.radians(30), math.radians(22)
 CAM_RANGE = 2.5
+APPARENT_D = 0.50        # m: op deze afstand is de schijnbare grootte = de echte grootte
 
 
 class PersonSim:
@@ -379,6 +384,8 @@ class PersonSim:
         seen_long = self.age > self.lat                           # herkenningsvertraging
         mint = torch.where(seen_long, look[:, 0], torch.zeros_like(look[:, 0]))
         msize = torch.where(seen_long, look[:, 1], torch.zeros_like(look[:, 1]))
+        msize = torch.where(msize > 0, (msize * APPARENT_D / dist_xy).round().clamp(1, 3), msize)
+        vis = vis & ((mint > 0) | (msize > 0))                    # niets beweegt = niets in beeld
         d = dist_xy
         if noise:
             n = self.n

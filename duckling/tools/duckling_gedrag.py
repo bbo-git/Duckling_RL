@@ -1,13 +1,23 @@
 r"""
 duckling_gedrag.py - het GEDRAG van de Duckling bekijken en uitproberen (2026-10-29).
 
-Een rode bal is de persoon (het saillante punt dat de camera ziet). De bal staat waar de
-viewer-camera naar kijkt: schuif de view (Shift + rechts slepen) of dubbelklik met RECHTS op
-de vloer, en de bal gaat daarheen. Wat de camera aan beweging ziet stel je in met de
-SCHUIFJES onderaan het Control-paneel (rechts, na de 14 motoren):
+Een rode bal is de persoon (het saillante punt dat de camera ziet). De bal beweeg je met
+de PIJLTOETSEN (klik eerst in het 3D-beeld):
+
+    pijl op / neer       bal van je af / naar je toe (t.o.v. jouw kijkrichting), 3 cm per tik
+    pijl links / rechts  bal naar links / rechts in beeld
+    End                  bal 50 cm recht voor de robot
+    Home                 camera terug op robot + bal
+    (vasthouden = blijft schuiven; de camera draai/zoom je gewoon met de muis)
+
+Wat de camera aan beweging ziet en wat de persoon doet stel je in met de SCHUIFJES
+onderaan het Control-paneel (rechts, na de 14 motoren):
 
     intensiteit  0 geen, 1 licht, 2 middel, 3 sterk
-    grootte      0 geen, 1 klein (hand), 2 middel, 3 groot (lijf)
+    grootte      0 geen, 1 klein (hand), 2 middel, 3 groot (lijf) - op 50 cm; dichterbij
+                 ziet de camera hem groter (schijnbare grootte staat linksboven)
+    wandel       0 bal staat stil, 1 loopt weg van de robot, 2 loopt rondjes om de robot,
+                 3 komt naar de robot toe (tot 20 cm)
     stijl        0 normaal, 1 parmantig
     uit_beeld    1 = persoon weg
     Backspace    reset
@@ -57,7 +67,8 @@ CAM_OFF = np.array([0.032, 0.0025, 0.0104])   # ESP32-CAM in het kopframe
 HEAD_LIMITS = np.array([0.25, 0.25, 1.10, 0.15])   # = HEAD_CAPS training (nek, kop-pitch, kop-yaw, kop-roll)
 # hurken (sit_gen.py standaard: romp 44 mm, 10 gr voorover)
 CROUCH = {"hip_pitch": 0.1934, "knee": -0.6377, "ankle": -0.2699}
-SIT_S = 2.0                   # s zitten / opstaan
+SIT_S = 0.5                   # s gaan zitten (2026-10-29: 3x sneller)
+SIT_UP_S = 0.8                # s opstaan
 FADE_OUT, FADE_IN = 1.0, 0.25
 
 
@@ -92,14 +103,19 @@ class FakeESP:
         u = rel_w[:2] / d
         tflow = (u[0] * self.vel_lp[1] - u[1] * self.vel_lp[0]) / d
         approach = -float(u @ self.vel_lp)
-        frame = dict(vis=float(vis), bx=bx, by=by, dist=d, msize=self.msize if vis else 0.0,
+        vis = vis and (self.mint > 0 or self.msize > 0)      # niets beweegt = niets in beeld
+        ms = float(np.clip(round(self.msize * B.APPARENT_D / d), 1, 3)) if self.msize > 0 else 0.0
+        self.msize_seen = ms
+        frame = dict(vis=float(vis), bx=bx, by=by, dist=d, msize=ms if vis else 0.0,
                      mint=self.mint if vis else 0.0, tflow=tflow, approach=approach)
         self.buf.append(frame)
         out = self.buf.pop(0) if len(self.buf) > B.ESP_DELAY else self.buf[0]
         return {k: np.array([v], dtype=float) for k, v in out.items()}
 
 
-SLIDERS = (("intensiteit", 0, 3), ("grootte", 0, 3), ("stijl", 0, 1), ("uit_beeld", 0, 1))
+SLIDERS = (("intensiteit", 0, 3), ("grootte", 0, 3), ("wandel", 0, 3), ("stijl", 0, 1), ("uit_beeld", 0, 1))
+BALL_STEP = 0.03              # m per pijltoets-tik
+WALK_V = 0.06                 # m/s: wandelsnelheid van de bal
 
 
 def build_model(scene):
@@ -123,7 +139,7 @@ def main():
     ap.add_argument("--scene", default="scene_walk.xml")
     ap.add_argument("--stijl", default=P.STYLES[0][0], choices=[n for n, _ in P.STYLES])
     ap.add_argument("--mooi", action="store_true")
-    ap.add_argument("--zit", default="sit_motion.json",
+    ap.add_argument("--zit", default="favorites/zit_v2.json",
                     help="zithouding uit sit_gen.py (S slaat sit_motion.npz + .json op); ontbreekt = standaard hurken")
     ap.add_argument("--test", type=float, default=0.0, help="zonder viewer: zoveel s met een vast script (controle)")
     a = ap.parse_args()
@@ -156,7 +172,8 @@ def main():
         order = list(sit_gen.JOINT_ORDER)
         crouch = np.array([q_sit[order.index(n)] for n in names]) - robot.home
         globals()["SIT_S"] = float(sp.down_s)
-        print(f"zithouding: {a.zit} (romp {sit_z * 1000:.0f} mm, zakken {sp.down_s:.1f} s)")
+        globals()["SIT_UP_S"] = float(sp.up_s)
+        print(f"zithouding: {a.zit} (romp {sit_z * 1000:.0f} mm, zakken {sp.down_s:.1f} s, opstaan {sp.up_s:.1f} s)")
 
     esp = FakeESP()
     beh = B.Behavior(np.zeros(1))
@@ -168,19 +185,45 @@ def main():
         beh.reset(np.array([0]))
         esp.__init__()
         st.update(posture="ZIT", t_post=0.0, rest_b=0.0, sit=1.0, phase=0.0, pos=np.zeros(2), yaw=0.0)
+        ball[:] = [0.6, 0.0, BALL_H]
         robot.d.qpos[robot.qadr] = robot.home + crouch
         mujoco.mj_forward(m, robot.d)
 
     sl = {n: m.actuator(n).id for n, _, _ in SLIDERS}
 
+    ball = np.array([0.6, 0.0, BALL_H])
+    view = {}
+
     def key(k):
         if k == 259:   # backspace
             keys["reset"] = True
+        elif k in (262, 263, 264, 265):          # pijltoetsen: t.o.v. de kijkrichting
+            az = math.radians(view["v"].cam.azimuth) if "v" in view else 0.0
+            fwd = np.array([math.cos(az), math.sin(az)]); left = np.array([-fwd[1], fwd[0]])
+            d = {265: fwd, 264: -fwd, 263: left, 262: -left}[k]
+            ball[:2] += BALL_STEP * d
+        elif k == 269:                            # End: bal voor de robot
+            yaw = 2 * math.atan2(robot.d.qpos[6], robot.d.qpos[3])
+            ball[:2] = robot.d.qpos[:2] + 0.5 * np.array([math.cos(yaw), math.sin(yaw)])
+        elif k == 268:                            # Home: camera op robot + bal
+            keys["home_cam"] = True
+
+    def wander(mode):
+        r = ball[:2] - robot.d.qpos[:2]
+        dist = max(np.linalg.norm(r), 1e-3); u = r / dist
+        if mode == 1:
+            ball[:2] += WALK_V * DT * u
+        elif mode == 2:
+            ball[:2] += WALK_V * DT * np.array([-u[1], u[0]])
+            ball[:2] = robot.d.qpos[:2] + u * dist         # straal houden
+        elif mode == 3 and dist > 0.20:
+            ball[:2] -= WALK_V * DT * u
 
     def read_sliders():
         c = lambda n: int(round(float(robot.d.ctrl[sl[n]])))
         esp.mint, esp.msize = float(c("intensiteit")), float(c("grootte"))
         esp.absent = c("uit_beeld") == 1
+        keys["wandel"] = c("wandel")
         stl = min(c("stijl"), len(P.STYLES) - 1)
         if stl != keys["style"]:
             keys["style"] = stl
@@ -211,8 +254,8 @@ def main():
             if st["t_post"] >= SIT_S:
                 st["posture"] = "ZIT"
         elif st["posture"] == "STAAT OP":
-            st["sit"] = 1.0 - min_jerk(st["t_post"] / SIT_S)
-            if st["t_post"] >= SIT_S:
+            st["sit"] = 1.0 - min_jerk(st["t_post"] / SIT_UP_S)
+            if st["t_post"] >= SIT_UP_S:
                 st["posture"] = "STAAT"
         standing = st["posture"] == "STAAT"
         twist = np.array([float(vx[0]), 0.0, float(wz[0])]) if standing else np.zeros(3)
@@ -249,39 +292,48 @@ def main():
 
     def hud(p, state, twist, head, fix):
         left = ("toestand\nhouding\nstijl\nESP: zichtbaar\nrichting / afstand\ngrootte / intensiteit\n"
-                "eigen beweging / nadering\nnetwerk: vx / wz\nkop yaw / elevatie\n\ntoetsen")
+                "eigen beweging / nadering\nnetwerk: vx / wz\nkop yaw / elevatie\n\ntoetsen\n")
         right = (f"{B.STATE_NAMES[state]}\n{st['posture']}  (netwerk {st['rest_b']:.0%})\n{P.STYLES[keys['style']][0]}\n"
                  f"{'ja' if p['vis'][0] > 0.5 else 'NEE'}{' (uit beeld)' if esp.absent else ''}\n"
                  f"{math.degrees(p['bx'][0]):+.0f} gr / {p['dist'][0] * 100:.0f} cm\n"
-                 f"{int(esp.msize)} / {int(esp.mint)}\n"
+                 f"{int(esp.msize)} (camera ziet {int(getattr(esp, 'msize_seen', 0))}) / {int(esp.mint)}\n"
                  f"{p['tflow'][0] * p['dist'][0] * 100:+.1f} cm/s / {p['approach'][0] * 100:+.1f} cm/s\n"
                  f"{twist[0] * 100:+.1f} cm/s / {math.degrees(twist[2]):+.0f} gr/s\n"
                  f"{math.degrees(head[2]):+.0f} / {math.degrees(head[1] - head[0]):+.0f} gr{'  (fixeert)' if fix else ''}\n\n"
-                 "schuifjes: intensiteit, grootte, stijl, uit_beeld")
+                 "bal: pijltoetsen, End, Home\nschuifjes: intensiteit, grootte, wandel, stijl, uit_beeld")
         return left, right
 
     reset()
     if a.test:
-        # vast script zonder viewer: zwaaien, lopen, dansen, stil
-        script = [(0, (0, 0), (0.6, 0.0)), (2, (2, 1), None), (10, (3, 3), "loop"), (20, (3, 3), "stil"),
-                  (32, (0, 0), None)]
-        ball = np.array([0.6, 0.0, BALL_H])
+        # vast script zonder viewer (de regels van Jairo): (t, intensiteit, grootte, wat de bal doet)
+        script = [(0, 0, 0, "1 m voor"), (4, 1, 1, "zijwaarts"), (9, 2, 2, "stil"), (24, 2, 2, "dichtbij"),
+                  (32, 3, 3, "loopt weg"), (45, 0, 0, "stil")]
         last, mode = None, None
         for k in range(int(a.test / DT)):
             t = k * DT
-            for ts, (mi, ms), act in script:
+            for ts, mi, ms, act in script:
                 if abs(t - ts) < DT / 2:
                     esp.mint, esp.msize = float(mi), float(ms)
                     mode = act
-            if mode == "loop":                     # persoon loopt weg, licht slingerend
-                ball[0] += 0.05 * DT
-                ball[1] += 0.02 * math.sin(0.5 * t) * DT
+                    yaw = 2 * math.atan2(robot.d.qpos[6], robot.d.qpos[3])
+                    fwd = np.array([math.cos(yaw), math.sin(yaw)])
+                    if act == "1 m voor":
+                        ball[:2] = robot.d.qpos[:2] + 1.0 * fwd
+                    elif act == "dichtbij":
+                        ball[:2] = robot.d.qpos[:2] + 0.25 * fwd
+                    print(f"--- t={t:4.1f}  intensiteit {mi}, grootte {ms}, bal: {act}")
+            if os.environ.get("DUCK_BAL"):
+                ball[:2] = [float(v) for v in os.environ["DUCK_BAL"].split(",")]
+            if mode == "zijwaarts":
+                ball[1] += 0.10 * DT
+            elif mode == "loopt weg":
+                wander(1)
             robot.d.mocap_pos[ball_mocap] = ball
             p, state, twist, head, fix = control_step(ball)
-            if state != last or k % 250 == 0:
+            if state != last or k % 100 == 0:
                 print(f"t={t:5.1f}  {B.STATE_NAMES[state]:8s} {st['posture']:11s} afstand {p['dist'][0]*100:4.0f} cm  "
-                      f"richting {math.degrees(p['bx'][0]):+4.0f}  vx {twist[0]*100:+5.1f} cm/s  wz {math.degrees(twist[2]):+4.0f} gr/s  "
-                      f"kop {math.degrees(head[2]):+3.0f}  romp {robot.d.qpos[2]*1000:.0f} mm")
+                      f"richting {math.degrees(p['bx'][0]):+4.0f}  zichtbaar {int(p['vis'][0])}  vx {twist[0]*100:+5.1f} cm/s  "
+                      f"wz {math.degrees(twist[2]):+4.0f} gr/s  kop {math.degrees(head[2]):+3.0f}  romp {robot.d.qpos[2]*1000:.0f} mm")
                 last = state
         return
 
@@ -289,17 +341,21 @@ def main():
     P.fast_model(m) if not a.mooi else None
     with mjviewer.launch_passive(m, robot.d, key_callback=key) as v:
         P.fast_render(v) if not a.mooi else None
+        view["v"] = v
         with v.lock():
-            v.cam.lookat[:] = [0.6, 0.0, BALL_H]; v.cam.distance = 1.4; v.cam.azimuth = 200; v.cam.elevation = -25
+            v.cam.lookat[:] = [0.3, 0.0, 0.05]; v.cam.distance = 1.2; v.cam.azimuth = 200; v.cam.elevation = -35
         print(__doc__.split("Een rode bal")[0])
         t_next = time.time()
         last_state = None
-        print("schuifjes onderaan het Control-paneel: intensiteit, grootte, stijl, uit_beeld")
+        print("bal: pijltoetsen (klik eerst in het beeld), End = voor de robot, Home = camera erbij")
         while v.is_running():
             if keys.pop("reset", False):
                 reset()
             read_sliders()
-            ball = np.array([v.cam.lookat[0], v.cam.lookat[1], BALL_H])
+            wander(keys.get("wandel", 0))
+            if keys.pop("home_cam", False):
+                with v.lock():
+                    v.cam.lookat[:2] = 0.5 * (robot.d.qpos[:2] + ball[:2]); v.cam.lookat[2] = 0.05
             robot.d.mocap_pos[ball_mocap] = ball
             p, state, twist, head, fix = control_step(ball)
             if state != last_state:

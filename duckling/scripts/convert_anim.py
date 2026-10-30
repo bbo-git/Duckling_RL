@@ -187,15 +187,14 @@ def feasibility(npz_path, scene_xml, noload=None):
     if tilts:
         print(f"  zool-kanteling bij steun: gemiddeld {np.mean(tilts):.0f} graden, max {np.max(tilts):.0f}"
               " (geen enkel-roll: alles boven ~5 graden = staan op de rand van de voet)")
-    print("\n== snelheid gewrichten t.o.v. de motoren (onbelast)")
-    q = a["joint_pos"]; v = np.abs(np.diff(np.vstack([q, q[:1]]), axis=0)) * fps
-    for j in ("hip_yaw", "hip_roll", "hip_pitch", "knee", "ankle", "neck_pitch", "head_pitch", "head_roll", "head_yaw"):
-        lim = noload.get(j.split("_")[0], noload["knee"])
-        cols = [names.index(f"{s}_{j}") for s in ("left", "right") if f"{s}_{j}" in names] or [names.index(j)]
-        top = max(v[:, c].max() for c in cols)
-        flag = "  TE SNEL" if top > 0.8 * lim else ""
-        print(f"  {j:10s} max {top:5.1f} rad/s   (motor {lim:.1f}){flag}")
-
+    print("\n== snelheid SERVO's t.o.v. onbelast (differentieel 1,5x: heup pitch+roll, kop yaw+roll)")
+    import os as _os
+    sys.path.insert(0, _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "..", "tools"))
+    import duckling_servo as DS
+    sp = DS.servo_speeds(a["joint_pos"], fps, names)
+    for k, (top, lim) in DS.worst_by_group(sp).items():
+        flag = "  TE SNEL" if top > lim else ("  (krap)" if top > 0.85 * lim else "")
+        print(f"  {k:10s} max {top:5.1f} rad/s   (servo {lim:.1f}){flag}")
 
 if __name__ == "__main__":
     # python convert_anim.py duck_anim_dump.json walk_cycle.npz [scene_walk.xml]

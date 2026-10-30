@@ -54,7 +54,7 @@ MIN_TRUNK_HEIGHT = 0.046  # m; V2 loopt op 60-65 mm, hurkt tot ~44 mm (hurken is
 # contact, romphoogte, kop) komt uit het rooster van die stijl. Op de robot kiest de controller.
 STYLES = [   # (naam, rooster in robot/duckling/grids/)
     ("normaal", "gait_grid_normaal_v3.npz"),
-    ("parmantig", "gait_grid_parmantig_v3.npz"),
+    ("parmantig", "gait_grid_parmantig_v5.npz"),
 ]
 STYLE_PROBS = (0.5, 0.5)
 # Taak: "lopen" (snelheidscommando's, eerst trainen) of "volgen" (persoon volgen, fine-tune daarna)
@@ -925,7 +925,9 @@ class toe_out:
     def __init__(self, cfg, env):
         self.ids = env.scene["robot"].find_bodies(["L_toe", "R_toe"], preserve_order=True)[0]
 
-    def __call__(self, env, free: float = 0.21) -> torch.Tensor:
+    # 2026-10-29: ook NAAR BINNEN (duiven-tenen): run v2-servo liep met beide heup-yaws op -23 gr
+    # (tenen in een punt), want alleen naar buiten werd bestraft. Binnen 15 gr vrij (bochten: 13 gr).
+    def __call__(self, env, free: float = 0.21, free_in: float = 0.26) -> torch.Tensor:
         asset = env.scene["robot"]
         yaw = lambda q: torch.atan2(2 * (q[..., 0] * q[..., 3] + q[..., 1] * q[..., 2]),
                                     1 - 2 * (q[..., 2] ** 2 + q[..., 3] ** 2))
@@ -933,7 +935,7 @@ class toe_out:
         f = yaw(asset.data.body_link_quat_w[:, self.ids])                    # (N, 2)
         rel = torch.atan2(torch.sin(f - h[:, None]), torch.cos(f - h[:, None]))
         out = torch.stack([rel[:, 0], -rel[:, 1]], -1)                      # left +, right - = outwards
-        return torch.clamp(out - free, min=0.0).sum(-1)
+        return (torch.clamp(out - free, min=0.0) + torch.clamp(-out - free_in, min=0.0)).sum(-1)
 
 
 def _yaw_frame_vel(env):
@@ -1188,7 +1190,8 @@ def make_duckling_velocity_env_cfg(play: bool = False, rough: bool = False) -> M
     R["push_off"] = RewardTermCfg(func=push_off, weight=2.0)                 # push the floor back to catch up
     R["back_off"] = RewardTermCfg(func=back_off, weight=3.0)                 # really step back when too close
     R["spin_limit"] = RewardTermCfg(func=spin_limit, weight=-2.0)            # no violent spins (> 1 rad/s)
-    R["toe_out"] = RewardTermCfg(func=toe_out, weight=-5.0)                  # no V-stance (feet > 12 deg out)
+    # 2026-10-29 (Jairo): toe_out eruit - geen straf op de voetstand, de animatie (walk_imitation) doet het werk
+    # R["toe_out"] = RewardTermCfg(func=toe_out, weight=-5.0)
     R["com_forward"] = RewardTermCfg(func=com_forward, weight=5.0)   # 2026-10-14: CoM ahead of the feet (your walk)
     R["stance_grip"] = RewardTermCfg(func=stance_grip, weight=1.5)   # 2026-10-13: no sliding feet
     R["stand_action_rate"] = RewardTermCfg(func=stand_action_rate, weight=-1.0)   # at rest: no wiggling
