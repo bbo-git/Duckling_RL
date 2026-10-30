@@ -11,6 +11,8 @@
 #   ./duck.sh resume [iters]     continue the newest run from its last checkpoint
 #   ./duck.sh status             progress and the main numbers
 #   ./duck.sh export [iter]      checkpoint (newest, or model_<iter>) -> /workspace/duckling_<mode>_<iter>.onnx
+#   ./duck.sh export [iter] --push   idem + in onnx/ van de git-repo committen en pushen
+#   ./duck.sh token              eenmalig per pod: git klaarzetten voor pushen met een token
 #   (checkpoints every 50 iterations; SAVE=250 ./duck.sh train for fewer)
 #   ./duck.sh stop               stop training
 #
@@ -256,8 +258,13 @@ EOF
 
   export)
     need_uv
+    # ./duck.sh export [iter] [--push]   (--push: ook in <git-root>/onnx/ committen en pushen)
+    push=0; itarg=""
+    for a in "${@:2}"; do
+      if [ "$a" = "--push" ]; then push=1; else itarg="$a"; fi
+    done
     run=$(newest_ckpt_run); [ -n "$run" ] || die "geen run met een checkpoint gevonden"
-    if [ -n "${2:-}" ]; then ck="$RUNS/$run/model_$2.pt"; [ -f "$ck" ] || die "geen $ck"
+    if [ -n "$itarg" ]; then ck="$RUNS/$run/model_$itarg.pt"; [ -f "$ck" ] || die "geen $ck"
     else ck=$(newest_ckpt "$run"); [ -n "$ck" ] || die "geen checkpoint in $run"; fi
     it=$(basename "$ck" .pt | sed 's/model_//')
     out=/workspace/duckling_${TAG}_${it}.onnx
@@ -266,7 +273,31 @@ EOF
     uv run scripts/export.py "$TASK" --checkpoint-file "$ck" --onnx-file "$out" 2>&1 | tail -1
     cp "$out" /workspace/duckling_${TAG}_latest.onnx
     echo "klaar: $out  (en /workspace/duckling_${TAG}_latest.onnx)"
-    echo "download via VS Code: rechtsklik op het bestand in /workspace -> Download"
+    if [ "$push" = 1 ]; then
+      root=$(git -C "$REPO" rev-parse --show-toplevel 2>/dev/null) || die "$REPO is geen git-repo"
+      mkdir -p "$root/onnx"
+      cp "$out" "$root/onnx/"
+      f="onnx/$(basename "$out")"
+      say "pushen: $f"
+      git -C "$root" pull --rebase --autostash || die "git pull mislukt (conflict?) - los op en push zelf"
+      git -C "$root" add "$f"
+      git -C "$root" commit -m "onnx: $(basename "$out") ($run)" || die "niets te committen"
+      git -C "$root" push || die "push mislukt - token ingesteld? (zie ./duck.sh token)"
+      echo "gepusht: $f - op je laptop: git pull"
+    else
+      echo "download via VS Code: rechtsklik op het bestand in /workspace -> Download"
+    fi
+    ;;
+
+  token)
+    # Eenmalig per pod: naam/e-mail voor commits en het token alleen in het geheugen (8 uur).
+    git config --global user.name >/dev/null || git config --global user.name "duckling-pod"
+    git config --global user.email >/dev/null || git config --global user.email "pod@duckling.local"
+    git config --global credential.helper "cache --timeout=28800"
+    echo "Bij de eerste push vraagt git:"
+    echo "  Username: je GitHub-gebruikersnaam"
+    echo "  Password: het token (github_pat_...), NIET je wachtwoord"
+    echo "Het token blijft 8 uur in het geheugen en wordt niet op schijf gezet."
     ;;
 
   stop)
@@ -274,6 +305,6 @@ EOF
     ;;
 
   *)
-    sed -n '2,13p' "$0" | sed 's/^# \{0,1\}//'
+    sed -n '2,15p' "$0" | sed 's/^# \{0,1\}//'
     ;;
 esac
