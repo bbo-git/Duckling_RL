@@ -204,8 +204,9 @@ ESP32-CAM: GPIO 1/3 vrij laten (flashen/debug); niet gebruiken: 0 (boot), 12 (st
 ### Voeding (1S LiPo, 3.5-4.2 V)
 - Servo's direct aan de accu; 470-1000 uF low-ESR bij de servo's; ster-GND bij de accu.
 - Core2350B: de pin "VB" is VBUS; daarachter zit de ME6217 3.3 V LDO (800 mA, lage drop-out).
-  GEEN diode op het bordje tussen VBUS en USB: accu via een Schottky (bv. SS14 / BAT60) naar VBUS,
-  anders duwt USB 5 V terug de accu in. Of: accu loskoppelen zolang USB erin zit.
+  GEEN diode op het bordje tussen VBUS en USB. Voorlopig (Jairo): ACCU UIT voordat USB erin gaat.
+  Upgrade zonder spanningsverlies: P-MOSFET (AO3401 / DMG2305UX) accu -> VB, gate aan USB-5V,
+  100k gate naar GND: USB erin = accu automatisch afgekoppeld (zoals de Raspberry Pi Pico).
 - 3V3-pin = uitgang van die LDO: voedt IMU en ESP32-CAM (op diens 3.3 V-pin, niet 5 V: de
   AMS1117 op de ESP-cam heeft ~1 V verlies nodig). 100 uF bij de ESP-cam. Bij een bijna lege accu
   (< ~3.5 V) zakt 3V3 het eerst weg -> ESP brown-out: batterijspanning bewaken.
