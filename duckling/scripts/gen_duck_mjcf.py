@@ -23,7 +23,7 @@ from pathlib import Path
 
 # ------------------------------------------------------------------ instellingen
 STEEL = 7.85
-RESIN = 1.15
+RESIN = 1.24   # 2026-10-30: gewogen beugel_pitch 3,88 g (model 3,59 bij 1,15) -> +8%
 TPU = 1.21
 TORSO_ORIGIN_MM = (0.0, 0.0, 60.0)  # oorsprong van de romp-body (ongeveer heuphoogte)
 SPAWN_CLEARANCE_MM = 2.0

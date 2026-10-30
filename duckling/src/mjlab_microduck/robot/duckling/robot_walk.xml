@@ -60,8 +60,8 @@
     <body name="trunk_base" pos="0 0 0.062">
       <freejoint name="trunk_base_freejoint"/>
       <site name="imu" group="3" pos="0 0 0.02" size="0.002"/>
-      <geom name="body" class="visual" type="mesh" mesh="body" pos="0 0 -0.06" mass="0.00939499"/>
-      <geom name="body_armature" class="visual" type="mesh" mesh="body_armature" pos="0 0 -0.06" mass="0.0074435"/>
+      <geom name="body" class="visual" type="mesh" mesh="body" pos="0 0 -0.06" mass="0.0101302"/>
+      <geom name="body_armature" class="visual" type="mesh" mesh="body_armature" pos="0 0 -0.06" mass="0.00802604"/>
       <geom name="batterij" class="part" type="sphere" size="0.003" pos="0.009435 -3.3e-05 0.021085" mass="0.0085"/>
       <geom name="servo_yaw_rechts" class="visual_dark" type="mesh" mesh="servo_yaw_rechts" pos="0 0 -0.06" mass="0.0041"/>
       <geom name="servo_yaw_links" class="visual_dark" type="mesh" mesh="servo_yaw_links" pos="0 0 -0.06" mass="0.0041"/>
@@ -70,27 +70,27 @@
       <geom name="imu_kabels" class="part" type="sphere" size="0.003" pos="0 0 0.015" mass="0.006"/>
       <body name="L_hip_yaw" pos="-0 0.017305 0.01895">
         <joint name="left_hip_yaw" class="servo" axis="0 0 1" range="-0.3491 0.3491" damping="0.0072454"/>
-        <geom name="beugel_pitch_links" class="visual" type="mesh" mesh="beugel_pitch_links" pos="0 -0.017305 -0.07895" mass="0.00358551"/>
+        <geom name="beugel_pitch_links" class="visual" type="mesh" mesh="beugel_pitch_links" pos="0 -0.017305 -0.07895" mass="0.00386611"/>
         <geom name="servo_differentieelA_links" class="visual_dark" type="mesh" mesh="servo_differentieelA_links" pos="0 -0.017305 -0.07895" mass="0.0041"/>
         <geom name="servo_differentieelB_links" class="visual_dark" type="mesh" mesh="servo_differentieelB_links" pos="0 -0.017305 -0.07895" mass="0.0041"/>
-        <geom name="gear_motor1_links" class="visual" type="mesh" mesh="gear_motor1_links" pos="0 -0.017305 -0.07895" mass="0.000160121"/>
-        <geom name="gear_motor2_links" class="visual" type="mesh" mesh="gear_motor2_links" pos="0 -0.017305 -0.07895" mass="0.000159975"/>
+        <geom name="gear_motor1_links" class="visual" type="mesh" mesh="gear_motor1_links" pos="0 -0.017305 -0.07895" mass="0.000172652"/>
+        <geom name="gear_motor2_links" class="visual" type="mesh" mesh="gear_motor2_links" pos="0 -0.017305 -0.07895" mass="0.000172494"/>
         <body name="L_hip_roll" pos="0.016537 0 -0.019375">
           <joint name="left_hip_roll" class="servo" axis="1 0 0" range="-0.3491 0.3491" damping="0.013991"/>
-          <geom name="blok_differentieel_links" class="visual" type="mesh" mesh="blok_differentieel_links" pos="-0.016537 -0.017305 -0.059575" mass="0.000449892"/>
+          <geom name="blok_differentieel_links" class="visual" type="mesh" mesh="blok_differentieel_links" pos="-0.016537 -0.017305 -0.059575" mass="0.000485101"/>
           <body name="L_hip_pitch" pos="-0.016537 0.015501 0">
             <joint name="left_hip_pitch" class="servo" axis="0 1 0" range="-1.0472 1.0472" damping="0.013991"/>
-            <geom name="onderbeen_links" class="visual" type="mesh" mesh="onderbeen_links" pos="0 -0.032806 -0.059575" mass="0.00420417"/>
+            <geom name="onderbeen_links" class="visual" type="mesh" mesh="onderbeen_links" pos="0 -0.032806 -0.059575" mass="0.00453319"/>
             <geom name="left_shin_collision" class="foot" type="mesh" mesh="onderbeen_links" pos="0 -0.032806 -0.059575" condim="1" contype="2" conaffinity="4"/>
             <geom name="magneet_pith_houder_links" class="visual_dark" type="mesh" mesh="magneet_pith_houder_links" pos="0 -0.032806 -0.059575" mass="0.000655"/>
             <body name="L_ankle" pos="-0.020731 -0.001572 -0.019792">
               <joint name="left_knee" class="servo" axis="-0 1 0" range="-0.8727 1.5708" damping="0.0072454"/>
-              <geom name="enkel_links" class="visual" type="mesh" mesh="enkel_links" pos="0.020731 -0.031234 -0.039783" mass="0.00137912"/>
+              <geom name="enkel_links" class="visual" type="mesh" mesh="enkel_links" pos="0.020731 -0.031234 -0.039783" mass="0.00148705"/>
               <geom name="left_ankle_collision" class="foot" type="mesh" mesh="enkel_links" pos="0.020731 -0.031234 -0.039783" condim="1" contype="2" conaffinity="4"/>
               <geom name="servo_enkel_links" class="visual_dark" type="mesh" mesh="servo_enkel_links" pos="0.020731 -0.031234 -0.039783" mass="0.0041"/>
               <body name="L_toe" pos="0.02071 -0.016303 -0.024583">
                 <joint name="left_ankle" class="servo" axis="-0 -1 -0" range="-1.0472 1.5708" damping="0.0072454"/>
-                <geom name="teen_links" class="visual" type="mesh" mesh="teen_links" pos="2.1e-05 -0.014931 -0.0152" mass="0.00647692"/>
+                <geom name="teen_links" class="visual" type="mesh" mesh="teen_links" pos="2.1e-05 -0.014931 -0.0152" mass="0.00698381"/>
                 <geom name="left_toe_collision" class="foot" type="mesh" mesh="teen_links" pos="2.1e-05 -0.014931 -0.0152" condim="1" contype="2" conaffinity="4"/>
                 <geom name="zool_links" class="visual" type="mesh" mesh="zool_links" pos="2.1e-05 -0.014931 -0.0152" mass="0.003548"/>
                 <geom name="left_foot_collision" class="foot" type="mesh" mesh="zool_links" pos="2.1e-05 -0.014931 -0.0152" contype="3" conaffinity="5"/>
@@ -103,25 +103,25 @@
       </body>
       <body name="neck" pos="0.001779 0.007227 0.048503">
         <joint name="neck_pitch" class="servo" axis="-0 1 0" range="-0.5236 0.5236" damping="0.0072454"/>
-        <geom name="neck" class="visual" type="mesh" mesh="neck" pos="-0.001779 -0.007227 -0.108503" mass="0.00335697"/>
+        <geom name="neck" class="visual" type="mesh" mesh="neck" pos="-0.001779 -0.007227 -0.108503" mass="0.00361969"/>
         <body name="head_pitch" pos="-0.004982 0.005195 0.031221">
           <joint name="head_pitch" class="servo_s" axis="0 -1 0" range="-0.5236 0.5236" damping="0.0025414"/>
           <geom name="servo_pitch_head" class="visual_dark" type="mesh" mesh="servo_pitch_head" pos="0.003203 -0.012422 -0.139724" mass="0.0025"/>
           <body name="head_roll" pos="0.008387 -0.012622 0">
             <joint name="head_roll" class="servo_s" axis="-1 0 0" range="-0.3491 0.3491" damping="0.0048828"/>
-            <geom name="blok_differentieel_head" class="visual" type="mesh" mesh="blok_differentieel_head" pos="-0.005184 0.0002 -0.139724" mass="0.000449892"/>
+            <geom name="blok_differentieel_head" class="visual" type="mesh" mesh="blok_differentieel_head" pos="-0.005184 0.0002 -0.139724" mass="0.000485101"/>
             <body name="head" pos="-0.008387 0 -0.005502">
               <joint name="head_yaw" class="servo_s" axis="-0 -0 1" range="-1.5708 1.5708" damping="0.0048828"/>
-              <geom name="beugel_pitch_head" class="visual" type="mesh" mesh="beugel_pitch_head" pos="0.003203 0.0002 -0.134222" mass="0.00338466"/>
+              <geom name="beugel_pitch_head" class="visual" type="mesh" mesh="beugel_pitch_head" pos="0.003203 0.0002 -0.134222" mass="0.00364955"/>
               <geom name="servo_differentieelA_head" class="visual_dark" type="mesh" mesh="servo_differentieelA_head" pos="0.003203 0.0002 -0.134222" mass="0.0025"/>
               <geom name="servo_differentieelB_head" class="visual_dark" type="mesh" mesh="servo_differentieelB_head" pos="0.003203 0.0002 -0.134222" mass="0.0025"/>
-              <geom name="gear_motor1_head" class="visual" type="mesh" mesh="gear_motor1_head" pos="0.003203 0.0002 -0.134222" mass="0.000159975"/>
-              <geom name="gear_motor2_head" class="visual" type="mesh" mesh="gear_motor2_head" pos="0.003203 0.0002 -0.134222" mass="0.000160121"/>
-              <geom name="head_shell" class="visual" type="mesh" mesh="head_shell" pos="0.003203 0.0002 -0.134222" mass="0.00226235"/>
+              <geom name="gear_motor1_head" class="visual" type="mesh" mesh="gear_motor1_head" pos="0.003203 0.0002 -0.134222" mass="0.000172494"/>
+              <geom name="gear_motor2_head" class="visual" type="mesh" mesh="gear_motor2_head" pos="0.003203 0.0002 -0.134222" mass="0.000172652"/>
+              <geom name="head_shell" class="visual" type="mesh" mesh="head_shell" pos="0.003203 0.0002 -0.134222" mass="0.0024394"/>
               <geom name="servo_jaw" class="visual_dark" type="mesh" mesh="servo_jaw" pos="0.003203 0.0002 -0.134222" mass="0.0025"/>
               <geom name="ESP3-CAM:1" class="part" type="sphere" size="0.003" pos="0.032027 0.002525 0.010375" mass="0.01"/>
               <body name="jaw" pos="6.2e-05 -0.033044 0.00539">
-                <geom name="jaw" class="visual" type="mesh" mesh="jaw" pos="0.003141 0.033244 -0.139612" mass="0.0105596"/>
+                <geom name="jaw" class="visual" type="mesh" mesh="jaw" pos="0.003141 0.033244 -0.139612" mass="0.011386"/>
               </body>
             </body>
           </body>
@@ -129,27 +129,27 @@
       </body>
       <body name="R_hip_yaw" pos="-0 -0.017305 0.01895">
         <joint name="right_hip_yaw" class="servo" axis="0 0 -1" range="-0.3491 0.3491" damping="0.0072454"/>
-        <geom name="beugel_pitch_rechts" class="visual" type="mesh" mesh="beugel_pitch_rechts" pos="0 0.017305 -0.07895" mass="0.00358536"/>
+        <geom name="beugel_pitch_rechts" class="visual" type="mesh" mesh="beugel_pitch_rechts" pos="0 0.017305 -0.07895" mass="0.00386596"/>
         <geom name="servo_differentieelA_rechts" class="visual_dark" type="mesh" mesh="servo_differentieelA_rechts" pos="0 0.017305 -0.07895" mass="0.0041"/>
         <geom name="servo_differentieelB_rechts" class="visual_dark" type="mesh" mesh="servo_differentieelB_rechts" pos="0 0.017305 -0.07895" mass="0.0041"/>
-        <geom name="gear_motor1_rechts" class="visual" type="mesh" mesh="gear_motor1_rechts" pos="0 0.017305 -0.07895" mass="0.000162172"/>
-        <geom name="gear_motor2_rechts" class="visual" type="mesh" mesh="gear_motor2_rechts" pos="0 0.017305 -0.07895" mass="0.000162025"/>
+        <geom name="gear_motor1_rechts" class="visual" type="mesh" mesh="gear_motor1_rechts" pos="0 0.017305 -0.07895" mass="0.000174864"/>
+        <geom name="gear_motor2_rechts" class="visual" type="mesh" mesh="gear_motor2_rechts" pos="0 0.017305 -0.07895" mass="0.000174706"/>
         <body name="R_hip_roll" pos="-0.014637 0 -0.019375">
           <joint name="right_hip_roll" class="servo" axis="-1 0 0" range="-0.3491 0.3491" damping="0.013991"/>
-          <geom name="blok_differentieel_rechts" class="visual" type="mesh" mesh="blok_differentieel_rechts" pos="0.014637 0.017305 -0.059575" mass="0.000449892"/>
+          <geom name="blok_differentieel_rechts" class="visual" type="mesh" mesh="blok_differentieel_rechts" pos="0.014637 0.017305 -0.059575" mass="0.000485101"/>
           <body name="R_hip_pitch" pos="0.014637 -0.015501 0">
             <joint name="right_hip_pitch" class="servo" axis="0 1 0" range="-1.0472 1.0472" damping="0.013991"/>
-            <geom name="onderbeen_rechts" class="visual" type="mesh" mesh="onderbeen_rechts" pos="0 0.032806 -0.059575" mass="0.00420402"/>
+            <geom name="onderbeen_rechts" class="visual" type="mesh" mesh="onderbeen_rechts" pos="0 0.032806 -0.059575" mass="0.00453303"/>
             <geom name="right_shin_collision" class="foot" type="mesh" mesh="onderbeen_rechts" pos="0 0.032806 -0.059575" condim="1" contype="4" conaffinity="2"/>
             <geom name="magneet_pith_houder_rechts" class="visual_dark" type="mesh" mesh="magneet_pith_houder_rechts" pos="0 0.032806 -0.059575" mass="0.000655"/>
             <body name="R_ankle" pos="-0.020731 0.001572 -0.019792">
               <joint name="right_knee" class="servo" axis="0 1 -0" range="-0.8727 1.5708" damping="0.0072454"/>
-              <geom name="enkel_rechts" class="visual" type="mesh" mesh="enkel_rechts" pos="0.020731 0.031234 -0.039783" mass="0.00138278"/>
+              <geom name="enkel_rechts" class="visual" type="mesh" mesh="enkel_rechts" pos="0.020731 0.031234 -0.039783" mass="0.001491"/>
               <geom name="right_ankle_collision" class="foot" type="mesh" mesh="enkel_rechts" pos="0.020731 0.031234 -0.039783" condim="1" contype="4" conaffinity="2"/>
               <geom name="servo_enkel_rechts" class="visual_dark" type="mesh" mesh="servo_enkel_rechts" pos="0.020731 0.031234 -0.039783" mass="0.0041"/>
               <body name="R_toe" pos="0.02071 0.016303 -0.024583">
                 <joint name="right_ankle" class="servo" axis="0 -1 0" range="-1.0472 1.5708" damping="0.0072454"/>
-                <geom name="teen_rechts" class="visual" type="mesh" mesh="teen_rechts" pos="2.1e-05 0.014931 -0.0152" mass="0.00647838"/>
+                <geom name="teen_rechts" class="visual" type="mesh" mesh="teen_rechts" pos="2.1e-05 0.014931 -0.0152" mass="0.00698539"/>
                 <geom name="right_toe_collision" class="foot" type="mesh" mesh="teen_rechts" pos="2.1e-05 0.014931 -0.0152" condim="1" contype="4" conaffinity="2"/>
                 <geom name="zool_rechts" class="visual" type="mesh" mesh="zool_rechts" pos="2.1e-05 0.014931 -0.0152" mass="0.003548"/>
                 <geom name="right_foot_collision" class="foot" type="mesh" mesh="zool_rechts" pos="2.1e-05 0.014931 -0.0152" contype="5" conaffinity="3"/>
