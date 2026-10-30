@@ -141,6 +141,8 @@ def main():
     ap.add_argument("--mooi", action="store_true")
     ap.add_argument("--zit", default="favorites/zit_v2.json",
                     help="zithouding uit sit_gen.py (S slaat sit_motion.npz + .json op); ontbreekt = standaard hurken")
+    ap.add_argument("--kop-vol", action="store_true",
+                    help="volle kopbereik, ook als het netwerk dat in de training nog niet kreeg")
     ap.add_argument("--test", type=float, default=0.0, help="zonder viewer: zoveel s met een vast script (controle)")
     a = ap.parse_args()
 
@@ -152,6 +154,17 @@ def main():
     full = [W.GaitGrid(np.load(p)) for _, p in P.STYLES]     # voor kinematisch afspelen
     style = [n for n, _ in P.STYLES].index(a.stijl)
     pol = P.Policy(a.onnx) if a.onnx else None
+    # 2026-10-30: de training breidt het kopbereik uit (iter 0/500/1000/1500/2000: 5/15/35/65/100 %).
+    # Een vroeg netwerk krijgt hier dus niet meer kop dan het kent (anders valt/draait het raar).
+    head_lim = HEAD_LIMITS.copy()
+    if pol is not None and not a.kop_vol:
+        import re
+        mm = re.search(r"_(\d+)\.onnx$", a.onnx)
+        if mm:
+            it = int(mm.group(1))
+            frac = 1.0 if it >= 2000 else 0.65 if it >= 1500 else 0.35 if it >= 1000 else 0.15 if it >= 500 else 0.05
+            head_lim = HEAD_LIMITS * frac
+            print(f"kopbereik {frac:.0%} (zoals in de training op iteratie {it}; --kop-vol = alles)")
     if pol is not None:
         robot.gait_clock = pol.n_in >= 63
         robot.styled = pol.n_in == 63 + len(P.STYLES)
@@ -241,7 +254,7 @@ def main():
         p = esp(ball, cam_pos, cam_R)
         v100 = np.array([grids[keys["style"]].v100])
         vx, wz, head, fix = beh.step(p, DT, v100)
-        head = np.clip(head[0], -HEAD_LIMITS, HEAD_LIMITS)
+        head = np.clip(head[0], -head_lim, head_lim)
         state = int(beh.state[0])
         # houding: RUST = zitten; uit RUST eerst opstaan (netwerk uit, commando 0)
         want_sit = state == B.REST

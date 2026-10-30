@@ -950,6 +950,32 @@ class toe_out:
         return (torch.clamp(out - free, min=0.0) + torch.clamp(-out - free_in, min=0.0)).sum(-1)
 
 
+class feet_parallel:
+    """2026-10-30 (Jairo): BELONING voor tenen recht vooruit, zoals jouw loopje: per voet de yaw van
+    de zool t.o.v. de romp (naar buiten +) tegen die van de referentie (= referentie-heup-yaw; in
+    bochten tot 13 gr). exp(-fout^2/std^2), gemiddeld over de twee voeten. Run 900 stond in V
+    (+22 gr), run 500 met tenen naar binnen (-14 gr)."""
+
+    def __init__(self, cfg, env):
+        asset = env.scene["robot"]
+        self.ids = asset.find_bodies(["L_toe", "R_toe"], preserve_order=True)[0]
+        self.hy = [C_LEG.index(f"{s}_hip_yaw") for s in ("left", "right")]
+
+    def __call__(self, env, std: float = 0.15, command_name: str = "twist") -> torch.Tensor:
+        asset = env.scene["robot"]
+        yaw = lambda q: torch.atan2(2 * (q[..., 0] * q[..., 3] + q[..., 1] * q[..., 2]),
+                                    1 - 2 * (q[..., 2] ** 2 + q[..., 3] ** 2))
+        h = yaw(asset.data.root_link_quat_w)
+        f = yaw(asset.data.body_link_quat_w[:, self.ids])
+        rel = torch.atan2(torch.sin(f - h[:, None]), torch.cos(f - h[:, None]))
+        out = torch.stack([rel[:, 0], -rel[:, 1]], -1)                      # naar buiten +
+        ref = _ref(env).q_now(env)[:, self.hy]                               # heup-yaw ref = voet-yaw ref
+        return torch.exp(-torch.square(out - ref).mean(-1) / std**2)
+
+
+C_LEG = LEG_JOINTS
+
+
 def _yaw_frame_vel(env):
     """Trunk linear velocity (xy) in the heading frame and yaw rate (world z)."""
     asset = env.scene["robot"]
@@ -1204,6 +1230,7 @@ def make_duckling_velocity_env_cfg(play: bool = False, rough: bool = False) -> M
     R["spin_limit"] = RewardTermCfg(func=spin_limit, weight=-2.0)            # no violent spins (> 1 rad/s)
     # 2026-10-29 (Jairo): toe_out eruit - geen straf op de voetstand, de animatie (walk_imitation) doet het werk
     # R["toe_out"] = RewardTermCfg(func=toe_out, weight=-5.0)
+    R["feet_parallel"] = RewardTermCfg(func=feet_parallel, weight=2.0, params={"std": 0.15})   # 2026-10-30
     R["com_forward"] = RewardTermCfg(func=com_forward, weight=5.0)   # 2026-10-14: CoM ahead of the feet (your walk)
     R["stance_grip"] = RewardTermCfg(func=stance_grip, weight=1.5)   # 2026-10-13: no sliding feet
     R["stand_action_rate"] = RewardTermCfg(func=stand_action_rate, weight=-1.0)   # at rest: no wiggling
@@ -1290,6 +1317,12 @@ def make_duckling_velocity_env_cfg(play: bool = False, rough: bool = False) -> M
         ev = cfg.events["randomize_mass_inertia"]
         ev.params["asset_cfg"] = SceneEntityCfg("robot", body_names=(".*",))
         ev.params["alpha_range"] = (math.log(0.90) / 2.0, math.log(1.15) / 2.0)
+    # 2026-10-30: action_rate liep op van -0.1 naar -1.0 (iter 500..1500): bij -1.0 kost hij meer dan
+    # walk_imitation kan opleveren -> de imitatie zakte vanaf ~500. Nu hooguit -0.2.
+    if "action_rate_weight" in cfg.curriculum:
+        st = cfg.curriculum["action_rate_weight"].params["weight_stages"]
+        cfg.curriculum["action_rate_weight"].params["weight_stages"] = [
+            dict(x, weight=max(x["weight"], -0.2)) for x in st]
     cmd = cfg.commands["twist"]
     # Around the speed of the reference walk cycle (~0.09 m/s at a 1 s cycle).
     # 2026-10-13: forward + turning only. With backwards and sideways commands (the walk
@@ -1314,7 +1347,7 @@ def make_duckling_velocity_env_cfg(play: bool = False, rough: bool = False) -> M
         # 2026-10-29 LOPEN: vx = fractie (0..1) van de 100%-snelheid van de stijl, draaien +-0.6 rad/s.
         # Eerst dit trainen op V2; volgen (DUCK_TASK=volgen) is een fine-tune daarna.
         cmd.ranges.lin_vel_x = (0.0, 1.0)
-        cmd.rel_turn_in_place_envs = 0.1
+        cmd.rel_turn_in_place_envs = 0.2   # 2026-10-30: 0.1 -> 0.2 (gedrag draait veel op de plaats)
         cfg.commands["twist"] = BehaviorVelocityCommandCfg(**vars(cmd))
         cfg.commands["head_pose"] = _BehaviorHeadPoseCfg(**vars(cfg.commands["head_pose"]))
         for name in ("follow_distance", "follow_bearing", "turn_toward", "push_off", "back_off"):
