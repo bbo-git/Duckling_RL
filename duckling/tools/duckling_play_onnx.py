@@ -44,7 +44,8 @@ import mujoco
 FOLLOW = [False]  # camera follows the robot; G in the viewer toggles (default off)
 import numpy as np
 import onnxruntime as ort
-import duckling_servo as DS      # 2026-10-29: servomodel (koppel-snelheid, differentiëlen 1,5x) = training
+import duckling_servo as DS
+ACTION_FILTER_ALPHA = 1.0 if os.environ.get("DUCK_GEEN_FILTER") else 0.4   # 2026-10-30: = training; DUCK_GEEN_FILTER=1 voor netwerken van voor 30-10 middag
 
 # --- must match training -----------------------------------------------------
 TIMESTEP = 0.002
@@ -199,6 +200,7 @@ class Duckling:
         self.d.qpos[3:7] = [1, 0, 0, 0]
         self.d.qpos[self.qadr] = self.home
         self.d.ctrl[:self.nj] = self.home
+        self.filt = None
         mujoco.mj_forward(self.m, self.d)
         self.last_action = np.zeros(self.nj)
         self.prev_jvel = np.zeros(self.nj)
@@ -235,6 +237,10 @@ class Duckling:
         self.last_action = action.copy()
         self.d.ctrl[:self.nj] = self.home + action           # targets relative to HOME
         target = np.clip(self.d.ctrl[:self.nj], self.jlo, self.jhi)   # 2026-10-30: zoals training/firmware
+        if getattr(self, "filt", None) is None:
+            self.filt = self.d.qpos[self.qadr].copy()
+        self.filt = self.filt + ACTION_FILTER_ALPHA * (target - self.filt)    # laagdoorlaat = training
+        target = self.filt
         for _ in range(DECIMATION):
             self.d.qfrc_applied[:] = 0.0
             if self.servo is not None:

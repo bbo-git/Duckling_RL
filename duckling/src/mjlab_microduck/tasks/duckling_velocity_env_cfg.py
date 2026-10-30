@@ -950,6 +950,52 @@ class toe_out:
         return (torch.clamp(out - free, min=0.0) + torch.clamp(-out - free_in, min=0.0)).sum(-1)
 
 
+from dataclasses import dataclass as _dc
+from mjlab.envs.mdp.actions.actions import JointPositionAction as _JPA, JointPositionActionCfg as _JPACfg
+
+ACTION_FILTER_ALPHA = 0.4   # 2026-10-30: laagdoorlaat op de servodoelen (~5 Hz bij 50 Hz); zelfde in player/firmware
+
+
+@_dc(kw_only=True)
+class FilteredJointPositionActionCfg(_JPACfg):
+    """Servodoel = geclipt doel door een laagdoorlaatfilter: doel += alpha * (nieuw - doel).
+    2026-10-30: run 400/900 stuurde 'dokter bibber': doelen sprongen 20-40 gr per stap en de
+    gewrichten keerden ~25x/s om (aan/uit-sturing, want de servo zit al na ~2 gr fout op vol koppel)."""
+
+    alpha: float = ACTION_FILTER_ALPHA
+
+    def build(self, env):
+        return FilteredJointPositionAction(self, env)
+
+
+class FilteredJointPositionAction(_JPA):
+    def __init__(self, cfg, env):
+        super().__init__(cfg, env)
+        self._filt = self._entity.data.default_joint_pos[:, self._target_ids].clone()
+        self._prev = self._filt.clone()
+
+    def process_actions(self, actions):
+        super().process_actions(actions)
+        self._prev = self._filt.clone()
+        self._filt = self._filt + self.cfg.alpha * (self._processed_actions - self._filt)
+        self._processed_actions = self._filt.clone()
+
+    def reset(self, env_ids=None):
+        super().reset(env_ids)
+        q = self._entity.data.joint_pos[:, self._target_ids]
+        if env_ids is None:
+            env_ids = slice(None)
+        self._filt[env_ids] = q[env_ids]
+        self._prev[env_ids] = q[env_ids]
+
+
+def target_rate(env, action_name: str = "joint_pos") -> torch.Tensor:
+    """2026-10-30: som (doel_t - doel_t-1)^2 van de echte (geclipte, gefilterde) servodoelen, rad^2.
+    Jouw loopje: ~0.02 per stap; aan/uit-sturing: ~4."""
+    t = env.action_manager.get_term(action_name)
+    return torch.square(t._filt - t._prev).sum(-1)
+
+
 class feet_parallel:
     """2026-10-30 (Jairo): BELONING voor tenen recht vooruit, zoals jouw loopje: per voet de yaw van
     de zool t.o.v. de romp (naar buiten +) tegen die van de referentie (= referentie-heup-yaw; in
@@ -1311,6 +1357,9 @@ def make_duckling_velocity_env_cfg(play: bool = False, rough: bool = False) -> M
     # gedrukt (V-voeten, gewricht "op slot" voor stabiliteit). Een echte servo kan dat niet.
     act_cfg = cfg.actions["joint_pos"]
     act_cfg.clip = {k: (math.radians(lo), math.radians(hi)) for k, (lo, hi) in JOINT_TARGET_RANGE_DEG.items()}
+    cfg.actions["joint_pos"] = FilteredJointPositionActionCfg(
+        **{f: getattr(act_cfg, f) for f in act_cfg.__dataclass_fields__})
+    cfg.rewards["target_rate"] = RewardTermCfg(func=target_rate, weight=-1.0)
     # 2026-10-30: massa per lichaam -10 .. +15 % (was alleen de romp +-5 %): het echte robotje
     # weegt waarschijnlijk meer dan het model (hars, draden, schroeven)
     if "randomize_mass_inertia" in cfg.events:
