@@ -155,3 +155,57 @@ cd /workspace && python3 -c "import zipfile,os;z=zipfile.ZipFile('duck_basis.zip
   Kop-yaw tot 63 gr (rondje: persoon op ~90 gr opzij). Kopmodel: schaal + camera + kaak achter alle kopgewrichten.
   Bekijken: `tools/duckling_gedrag.py` (rode bal = persoon = richtpunt van de view; 1-3 intensiteit, 4-6 grootte, 0 geen,
   7 stijl, 8 uit beeld). Zonder ONNX kinematisch. Pod-update: `duck_v2_gedrag.zip` (vervangt duck_v2_stijl.zip).
+
+
+## Hardware: pinnen en voeding (2026-10-30)
+
+Controller: Waveshare Core2350B (RP2350B, 48 GPIO: P1 GPIO0-14, P3 GPIO15-29, P4 GPIO30-44,
+P2 GPIO45-47; GPIO47 = PSRAM-CS op B1/B2, niet gebruiken).
+
+### Servo's: GPIO 0-15 (hardware-PWM, elk een eigen kanaal; 16-31 delen dezelfde kanalen)
+Diff-paren en links/rechts-paren op één PWM-slice (even+oneven GPIO), zodat ze in fase lopen.
+
+| GPIO | slice | servo | type |
+|---|---|---|---|
+| 0 | 0A | L heup-diff A | ES9051 |
+| 1 | 0B | L heup-diff B | ES9051 |
+| 2 | 1A | R heup-diff A | ES9051 |
+| 3 | 1B | R heup-diff B | ES9051 |
+| 4 | 2A | kop-diff A (yaw+roll) | ES9251 |
+| 5 | 2B | kop-diff B (yaw-roll) | ES9251 |
+| 6 | 3A | L heup-yaw | ES9051 |
+| 7 | 3B | R heup-yaw | ES9051 |
+| 8 | 4A | L knie (model `left_knee`, Jairo: enkel) | ES9051 |
+| 9 | 4B | R knie | ES9051 |
+| 10 | 5A | L enkel (model `left_ankle`, Jairo: teen) | ES9051 |
+| 11 | 5B | R enkel | ES9051 |
+| 12 | 6A | nek | ES9051 |
+| 13 | 6B | kop-pitch | ES9251 |
+| 14 | 7A | kaak | ES9251 |
+| 15 | 7B | reserve | |
+
+PWM 50 Hz (digitale servo's kunnen 100-200 Hz: minder vertraging). Servo-doel = gewrichtshoek
+geclipt op het gewrichtsbereik (zoals de training), diff: A = 1.5(uit+drager), B = 1.5(uit-drager).
+220 ohm in elke signaallijn (bescherming bij verkeerd om ingestoken stekker).
+
+### Overig
+| GPIO | functie | naar |
+|---|---|---|
+| 16 | UART0 TX (921600) | ESP32-CAM GPIO13 (RX) |
+| 17 | UART0 RX | ESP32-CAM GPIO14 (TX) |
+| 18 | I2C1 SDA | IMU |
+| 19 | I2C1 SCL | IMU |
+| 20 | IMU-interrupt (data ready, 50 Hz-synchroon) | IMU INT |
+| 21 | knopje (naar GND, interne pull-up) | |
+| 40 | ADC batterijspanning | deler 100k/100k vanaf accu+ (na de schakelaar) |
+
+ESP32-CAM: GPIO 1/3 vrij laten (flashen/debug); niet gebruiken: 0 (boot), 12 (strapping), 16 (PSRAM), 4 (flits-led).
+
+### Voeding (1S LiPo, 3.5-4.2 V)
+- Servo's direct aan de accu; 470-1000 uF low-ESR bij de servo's; ster-GND bij de accu.
+- Core2350B: de pin "VB" is VBUS; daarachter zit de ME6217 3.3 V LDO (800 mA, lage drop-out).
+  GEEN diode op het bordje tussen VBUS en USB: accu via een Schottky (bv. SS14 / BAT60) naar VBUS,
+  anders duwt USB 5 V terug de accu in. Of: accu loskoppelen zolang USB erin zit.
+- 3V3-pin = uitgang van die LDO: voedt IMU en ESP32-CAM (op diens 3.3 V-pin, niet 5 V: de
+  AMS1117 op de ESP-cam heeft ~1 V verlies nodig). 100 uF bij de ESP-cam. Bij een bijna lege accu
+  (< ~3.5 V) zakt 3V3 het eerst weg -> ESP brown-out: batterijspanning bewaken.
