@@ -215,7 +215,8 @@ def main():
             ball[:2] += WALK_V * DT * u
         elif mode == 2:
             ball[:2] += WALK_V * DT * np.array([-u[1], u[0]])
-            ball[:2] = robot.d.qpos[:2] + u * dist         # straal houden
+            r2 = ball[:2] - robot.d.qpos[:2]
+            ball[:2] = robot.d.qpos[:2] + r2 / max(np.linalg.norm(r2), 1e-3) * dist   # straal houden
         elif mode == 3 and dist > 0.20:
             ball[:2] -= WALK_V * DT * u
 
@@ -306,7 +307,8 @@ def main():
     reset()
     if a.test:
         # vast script zonder viewer (de regels van Jairo): (t, intensiteit, grootte, wat de bal doet)
-        script = [(0, 0, 0, "1 m voor"), (4, 1, 1, "zijwaarts"), (9, 2, 2, "stil"), (24, 2, 2, "dichtbij"),
+        script = [(0, 0, 0, "1 m voor"), (4, 1, 1, "zijwaarts")] if not os.environ.get("DUCK_RAND") else [(0, 1, 1, "1 m voor"), (2, 1, 1, "rondje")]
+        script = script if os.environ.get("DUCK_RAND") else script + [(9, 2, 2, "stil"), (24, 2, 2, "dichtbij"),
                   (32, 3, 3, "loopt weg"), (45, 0, 0, "stil")]
         last, mode = None, None
         for k in range(int(a.test / DT)):
@@ -326,6 +328,8 @@ def main():
                 ball[:2] = [float(v) for v in os.environ["DUCK_BAL"].split(",")]
             if mode == "zijwaarts":
                 ball[1] += 0.10 * DT
+            elif mode == "rondje":                 # loopt langzaam om de robot heen (licht)
+                wander(2)
             elif mode == "loopt weg":
                 wander(1)
             robot.d.mocap_pos[ball_mocap] = ball

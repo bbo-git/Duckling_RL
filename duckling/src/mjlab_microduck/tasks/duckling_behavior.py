@@ -26,7 +26,8 @@ en later op de RP2350 (overzetten naar C/MicroPython: alleen + - * / min max abs
        ZOEKEN    persoon kwijt: draaien naar waar hij het laatst was, kop zoekt
    Regels (2026-10-29 avond, Jairo):
        niets beweegt (intensiteit 0) : niets in beeld -> blijft zitten, kijkt rond
-       licht                         : blijft zitten, kop volgt het punt
+       licht                         : blijft zitten, kop volgt het punt; komt het punt verder dan
+                                       52 gr opzij (rand van wat de kop kan) -> opstaan en meedraaien
        middel of sterk               : erheen om te verkennen (NADEREN tot 50 cm, dan KIJKEN)
        sterk  middel/groot + punt beweegt : VOLGEN
        sterk  groot     + punt stil       : ORBIT
@@ -74,6 +75,7 @@ HEAD_ELEV_MAX, HEAD_ELEV_MIN = 0.5, -0.25   # rad: nek + kop samen (elk max 0.25
 SACCADE_THR = math.radians(12)   # kop draait pas als het doel > 12 gr verschoven is (was 7: te spastisch) ...
 FIX_MIN = 0.6            # ... en hij minstens zo lang heeft gefixeerd (s)
 SACCADE_RATE = 3.0        # rad/s: snelle kopdraai (servo ~8)
+EDGE_TURN = 0.9           # rad (52 gr): zit hij en staat de actie verder opzij -> opstaan en draaien
 LOOK_AMP = 1.0            # rad: rondkijken in rust/zoeken (2026-10-29: 0.6 -> 1.0, zag niets opzij)
 
 
@@ -196,6 +198,9 @@ class Behavior:
         resting = (S == REST) | (S == WATCH)
         # --- overgangen (volgorde = prioriteit, laatste wint)
         self._go(resting & want_watch, WATCH)
+        # 2026-10-30 (Jairo): zittend en de actie aan de rand van wat de kop kan zien -> opstaan en
+        # het lijf meedraaien (KIJKEN draait op de plaats boven 25 gr)
+        self._go((S == REST) & vis & (mint > 0.5) & (absv(b) > EDGE_TURN), WATCH)
         self._go(resting & want_approach, APPROACH)
         self._go(((S == REST) | (S == WATCH) | (S == APPROACH)) & want_follow, FOLLOW)
         self._go(((S == REST) | (S == WATCH) | (S == APPROACH) | (S == FOLLOW)) & want_orbit, ORBIT)
