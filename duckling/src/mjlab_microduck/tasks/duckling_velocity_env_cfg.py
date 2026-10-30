@@ -339,11 +339,14 @@ class walk_imitation:
         w = [IMITATION_JOINT_WEIGHT[j.split("_", 1)[1]] for j in LEG_JOINTS]
         self.w = torch.tensor(w, device=env.device) / sum(w)
 
-    def __call__(self, env, std: float, command_name: str = "twist") -> torch.Tensor:
+    def __call__(self, env, std: float, std_fine: float = 0.0, command_name: str = "twist") -> torch.Tensor:
         ref = _ref(env)
         q_ref = ref.q_now(env)
         q = env.scene["robot"].data.joint_pos[:, ref.leg_ids]
-        r = torch.exp(-torch.sum(self.w * torch.square(q - q_ref), dim=-1) / std**2)
+        e = torch.sum(self.w * torch.square(q - q_ref), dim=-1)
+        r = torch.exp(-e / std**2)
+        if std_fine > 0:   # 2026-10-30: twee schalen - grof (richting) + fijn (echt jouw loopje)
+            r = 0.5 * r + 0.5 * torch.exp(-e / std_fine**2)
         return r * _moving(env, command_name).float()
 
 
@@ -1174,7 +1177,7 @@ def make_duckling_velocity_env_cfg(play: bool = False, rough: bool = False) -> M
     R = cfg.rewards
     # walking: the cycle
     R["walk_imitation"] = RewardTermCfg(func=walk_imitation, weight=IMITATION_WEIGHT,
-                                        params={"std": IMITATION_STD})
+                                        params={"std": IMITATION_STD, "std_fine": 0.10})   # 2026-10-30: + fijn (250 waggelde: heup-roll 37 gr i.p.v. 12)
     R["contact_schedule"] = RewardTermCfg(func=contact_schedule, weight=4.0)   # timing as a guide
     R["swing_clearance"] = RewardTermCfg(func=swing_clearance, weight=1.5,   # lift the swing foot
                                          params={"target": SWING_LIFT})
