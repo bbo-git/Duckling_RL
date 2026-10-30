@@ -141,7 +141,9 @@ LEG_JOINTS = [f"{s}_{j}" for s in ("left", "right")
 # 2026-10-14: hip_roll 0.3 -> 1.0: it lifted the swing foot sideways with hip roll instead of hip pitch
 # 2026-10-15: hip_yaw back 1.0 -> 0.3: pinned to the grid's (weak) turn pattern it could not steer;
 # free again, the follow rewards say where to go
-IMITATION_JOINT_WEIGHT = {"hip_yaw": 0.3, "hip_roll": 1.0, "hip_pitch": 1.0, "knee": 1.0, "ankle": 0.1}
+# 2026-10-30 (Jairo): hip_yaw 0.3 -> 1.0: de animatie stuurt de heup-yaw (tenen stonden naar binnen;
+# het rooster draait met de heup-yaw)
+IMITATION_JOINT_WEIGHT = {"hip_yaw": 1.0, "hip_roll": 1.0, "hip_pitch": 1.0, "knee": 1.0, "ankle": 0.1}
 
 
 _STYLE_CACHE = {}
@@ -1267,6 +1269,12 @@ def make_duckling_velocity_env_cfg(play: bool = False, rough: bool = False) -> M
     if "push_robot" in cfg.events:
         r = 0.3 * SCALE
         cfg.events["push_robot"].params["velocity_range"] = {"x": (-r, r), "y": (-r, r)}
+    # 2026-10-30: massa per lichaam -10 .. +15 % (was alleen de romp +-5 %): het echte robotje
+    # weegt waarschijnlijk meer dan het model (hars, draden, schroeven)
+    if "randomize_mass_inertia" in cfg.events:
+        ev = cfg.events["randomize_mass_inertia"]
+        ev.params["asset_cfg"] = SceneEntityCfg("robot", body_names=(".*",))
+        ev.params["alpha_range"] = (math.log(0.90) / 2.0, math.log(1.15) / 2.0)
     cmd = cfg.commands["twist"]
     # Around the speed of the reference walk cycle (~0.09 m/s at a 1 s cycle).
     # 2026-10-13: forward + turning only. With backwards and sideways commands (the walk
@@ -1299,7 +1307,7 @@ def make_duckling_velocity_env_cfg(play: bool = False, rough: bool = False) -> M
         R["track_linear_velocity"].weight = 4.0
         R["track_angular_velocity"] = RewardTermCfg(
             func=track_ang_two_scale, weight=4.0,
-            params={"std_fine": 0.25, "std_coarse": 0.6, "command_name": "twist"})
+            params={"std_fine": 0.15, "std_coarse": 0.6, "command_name": "twist"})   # 2026-10-30: 0.25 -> 0.15 (1050 draaide niet)
         R["com_forward"].weight = 2.0
         R["stand_still"] = RewardTermCfg(func=stand_still, weight=3.0)
         R["flat_feet"] = RewardTermCfg(func=flat_feet, weight=1.0)
