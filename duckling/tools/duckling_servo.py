@@ -14,6 +14,11 @@ Waarden op 1S (3.7 V), geschaald van de 4.8 V-specs:
 import numpy as np
 
 RATIO = 24.0 / 16.0           # differentieel-tandwielen
+DEADBAND = np.radians(0.8)    # 2026-10-31: dode zone servo-as (training: 0.3-1.5 gr per env)
+
+
+def _db(e):
+    return np.sign(e) * max(abs(e) - DEADBAND, 0.0)
 ES9051 = dict(stall=0.0605, speed=9.0, kp=2.0, kd=0.02)
 ES9251 = dict(stall=0.0189, speed=8.1, kp=0.6, kd=0.006)
 # servo-PD van een differentieel-servo (servo-as): lager dan enkel, want via 2 servo's en 1,5^2
@@ -50,7 +55,7 @@ class ServoModel:
     def torques(self, q, qd, target):
         tau = np.zeros(len(self.names))
         for i, sv in self.single:
-            t = sv["kp"] * (target[i] - q[i]) - sv["kd"] * qd[i]
+            t = sv["kp"] * _db(target[i] - q[i]) - sv["kd"] * qd[i]
             tau[i] = _curve(t, qd[i], sv)
             self.last[self.names[i]] = (tau[i] / sv["stall"], qd[i] / sv["speed"])
         R = RATIO
@@ -58,7 +63,7 @@ class ServoModel:
             out = []
             for sgn, tag in ((1.0, "A"), (-1.0, "B")):
                 s, w, st = R * (q[o] + sgn * q[c]), R * (qd[o] + sgn * qd[c]), R * (target[o] + sgn * target[c])
-                t = _curve(sv["kp"] * (st - s) - sv["kd"] * w, w, sv)
+                t = _curve(sv["kp"] * _db(st - s) - sv["kd"] * w, w, sv)
                 out.append(t)
                 self.last[f"{nm}{tag}"] = (t / sv["stall"], w / sv["speed"])
             tau[o] = R * (out[0] + out[1])

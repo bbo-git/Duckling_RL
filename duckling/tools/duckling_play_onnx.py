@@ -45,6 +45,7 @@ FOLLOW = [False]  # camera follows the robot; G in the viewer toggles (default o
 import numpy as np
 import onnxruntime as ort
 import duckling_servo as DS
+ACTION_FILTER_ALPHA_HEAD = 1.0 if os.environ.get("DUCK_GEEN_FILTER") else (0.4 if os.environ.get("DUCK_OUDE_KOP") else 0.25)   # 2026-10-31
 ECHTE_OBS = bool(os.environ.get("DUCK_ECHTE_OBS"))   # 2026-10-31: netwerken van voor 31-10: echte gewrichtsstand
 EST_SPEED_FRAC = 0.75
 EST_VMAX = {"hip_yaw": 9.0, "knee": 9.0, "ankle": 9.0, "neck_pitch": 9.0, "head_pitch": 8.1,
@@ -257,7 +258,10 @@ class Duckling:
         target = np.clip(self.d.ctrl[:self.nj], self.jlo, self.jhi)   # 2026-10-30: zoals training/firmware
         if getattr(self, "filt", None) is None:
             self.filt = self.d.qpos[self.qadr].copy()
-        self.filt = self.filt + ACTION_FILTER_ALPHA * (target - self.filt)    # laagdoorlaat = training
+        if getattr(self, "alpha_vec", None) is None:
+            self.alpha_vec = np.array([ACTION_FILTER_ALPHA_HEAD if n in ("neck_pitch", "head_pitch", "head_roll", "head_yaw")
+                                       else ACTION_FILTER_ALPHA for n in self.names])
+        self.filt = self.filt + self.alpha_vec * (target - self.filt)    # laagdoorlaat = training
         target = self.filt
         if getattr(self, "est", None) is None:
             self.est = self.d.qpos[self.qadr].copy()

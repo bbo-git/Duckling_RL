@@ -37,7 +37,7 @@ SHELL_INERTIA_PARTS = {"head_shell", "body"}
 BOUGHT_MASS_G = {
     "drv1": 1.5, "drv2": 1.5, "drv3": 1.5,     # DRV8835-moduletjes zonder headers (schatting)
     "batterij": 8.5,                           # Tattu 1S 300 mAh (schatting ~8-9 g)
-    "ESP3-CAM:1": 10.0,                        # ESP32-CAM met camera (schatting)
+    "ESP3-CAM:1": 6.72,                        # ESP32-CAM met camera (gewogen 2026-10-31)
 }
 EXTRA_TORSO_PARTS = [  # (naam, massa_g, positie_mm) – nog niet in CAD
     ("controller_board", 5.0, (0.0, 0.0, 85.0)),   # Core2350B (schatting)

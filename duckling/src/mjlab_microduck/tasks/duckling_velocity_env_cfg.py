@@ -954,6 +954,8 @@ from dataclasses import dataclass as _dc
 from mjlab.envs.mdp.actions.actions import JointPositionAction as _JPA, JointPositionActionCfg as _JPACfg
 
 ACTION_FILTER_ALPHA = 0.4   # 2026-10-30: laagdoorlaat op de servodoelen (~5 Hz bij 50 Hz); zelfde in player/firmware
+ACTION_FILTER_ALPHA_HEAD = 0.25   # 2026-10-31: nek + kop rustiger (~3 Hz): de kop (52 g) was 'hysterisch'
+HEAD_JOINT_NAMES = ("neck_pitch", "head_pitch", "head_roll", "head_yaw")
 
 
 @_dc(kw_only=True)
@@ -963,6 +965,7 @@ class FilteredJointPositionActionCfg(_JPACfg):
     gewrichten keerden ~25x/s om (aan/uit-sturing, want de servo zit al na ~2 gr fout op vol koppel)."""
 
     alpha: float = ACTION_FILTER_ALPHA
+    alpha_head: float = ACTION_FILTER_ALPHA_HEAD
 
     def build(self, env):
         return FilteredJointPositionAction(self, env)
@@ -993,12 +996,15 @@ class FilteredJointPositionAction(_JPA):
         self._est = self._filt.clone()
         self._est_prev = self._filt.clone()
         self._vmax = torch.tensor([_est_vmax(n) for n in self._target_names], device=self.device)
+        self._alpha = torch.tensor([self.cfg.alpha_head if n in HEAD_JOINT_NAMES else self.cfg.alpha
+                                    for n in self._target_names], device=self.device)
+        self._head = torch.tensor([n in HEAD_JOINT_NAMES for n in self._target_names], device=self.device)
         self._dt = env.step_dt
 
     def process_actions(self, actions):
         super().process_actions(actions)
         self._prev = self._filt.clone()
-        self._filt = self._filt + self.cfg.alpha * (self._processed_actions - self._filt)
+        self._filt = self._filt + self._alpha * (self._processed_actions - self._filt)
         self._processed_actions = self._filt.clone()
         # schatting van de gewrichtsstand aan het eind van deze stap (zoals de firmware)
         self._est_prev = self._est.clone()
@@ -1032,6 +1038,12 @@ def target_rate(env, action_name: str = "joint_pos") -> torch.Tensor:
     Jouw loopje: ~0.02 per stap; aan/uit-sturing: ~4."""
     t = env.action_manager.get_term(action_name)
     return torch.square(t._filt - t._prev).sum(-1)
+
+
+def head_target_rate(env, action_name: str = "joint_pos") -> torch.Tensor:
+    """2026-10-31: extra rem op springende servodoelen van nek en kop (rad^2 per stap)."""
+    t = env.action_manager.get_term(action_name)
+    return (torch.square(t._filt - t._prev) * t._head).sum(-1)
 
 
 class feet_parallel:
@@ -1331,7 +1343,7 @@ def make_duckling_velocity_env_cfg(play: bool = False, rough: bool = False) -> M
     R["head_pose_tracking"].weight = 3.0          # volg16b: 1.5 -> 3, the head hung forward          # 2026-10-13: 1 -> 1.5, now incl. the walk's head style
     R["head_pose_tracking"].func = head_pose_with_style
     # volg16b: coarse std 0.25 -> 0.6 rad: at 30 deg off the old one paid ~0 = no way back
-    R["head_pose_tracking"].params = {"command_name": "head_pose", "std": 0.6, "fine_std": 0.1}  # std 0.5 -> 0.25: a busy head was nearly free
+    R["head_pose_tracking"].params = {"command_name": "head_pose", "std": 0.6, "fine_std": 0.15}   # 2026-10-31: fijn 0.1 -> 0.15 (minder nerveus)  # std 0.5 -> 0.25: a busy head was nearly free
     # survival: ending an episode must never pay off (else PPO learns to collapse)
     R["head_level"] = RewardTermCfg(func=head_level, weight=3.0, params={"command_name": "head_pose"})   # volg16b
     R["alive"] = RewardTermCfg(func=envs_mdp.is_alive, weight=0.5)
@@ -1398,6 +1410,7 @@ def make_duckling_velocity_env_cfg(play: bool = False, rough: bool = False) -> M
     cfg.actions["joint_pos"] = FilteredJointPositionActionCfg(
         **{f: getattr(act_cfg, f) for f in act_cfg.__dataclass_fields__})
     cfg.rewards["target_rate"] = RewardTermCfg(func=target_rate, weight=-2.0)
+    cfg.rewards["head_target_rate"] = RewardTermCfg(func=head_target_rate, weight=-6.0)   # 2026-10-31: kop rustiger
     # 2026-10-31: actor ziet de GESCHATTE gewrichtsstand (zoals op de robot), de critic de echte
     from mjlab.utils.noise import UniformNoiseCfg as _Un
     cfg.observations["actor"].terms["joint_pos"] = ObservationTermCfg(
