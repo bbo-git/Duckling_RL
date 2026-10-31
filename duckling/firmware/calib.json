@@ -1,0 +1,91 @@
+{
+ "L_diffA": {
+  "offset": -1.5,
+  "teken": 1
+ },
+ "L_diffB": {
+  "offset": 19.5,
+  "teken": 1
+ },
+ "L_enkel": {
+  "offset": 0.0,
+  "teken": 1
+ },
+ "L_heup": {
+  "sp": 1,
+  "sr": -1
+ },
+ "L_knie": {
+  "offset": 0.0,
+  "teken": 1
+ },
+ "L_yaw": {
+  "offset": 19.0,
+  "teken": 1
+ },
+ "R_diffA": {
+  "offset": -12.0,
+  "teken": 1
+ },
+ "R_diffB": {
+  "offset": 3.0,
+  "teken": 1
+ },
+ "R_enkel": {
+  "offset": 0.0,
+  "teken": 1
+ },
+ "R_heup": {
+  "sp": -1,
+  "sr": 1
+ },
+ "R_knie": {
+  "offset": 0.0,
+  "teken": 1
+ },
+ "R_yaw": {
+  "offset": -8.0,
+  "teken": -1
+ },
+ "_info": {
+  "datum": "2026-10-31",
+  "formule": "us = 1500 + teken*(offset + servohoek)*10; diff: A = 1.5*(sp*uit + sr*drager), B = 1.5*(sp*uit - sr*drager)",
+  "geijkt": [
+   "L_heup",
+   "R_heup",
+   "L_yaw",
+   "R_yaw"
+  ],
+  "nog_niet": [
+   "knie",
+   "enkel",
+   "nek",
+   "kop",
+   "kaak"
+  ]
+ },
+ "kaak": {
+  "offset": 0.0,
+  "teken": 1
+ },
+ "kop": {
+  "sp": 1,
+  "sr": 1
+ },
+ "kop_diffA": {
+  "offset": 0.0,
+  "teken": 1
+ },
+ "kop_diffB": {
+  "offset": 0.0,
+  "teken": 1
+ },
+ "kop_pitch": {
+  "offset": 0.0,
+  "teken": 1
+ },
+ "nek": {
+  "offset": 0.0,
+  "teken": 1
+ }
+}
