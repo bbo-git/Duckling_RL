@@ -968,17 +968,42 @@ class FilteredJointPositionActionCfg(_JPACfg):
         return FilteredJointPositionAction(self, env)
 
 
+# 2026-10-31: de servo's geven GEEN positie terug. De firmware schat de gewrichtsstand uit de eigen
+# servodoelen: est += clip(doel - est, +-vmax*dt) (servo loopt met ~75 % van de onbelaste snelheid naar
+# zijn doel). Het netwerk krijgt in de training precies die schatting (met ruis), niet de echte stand.
+EST_SPEED_FRAC = 0.75
+EST_VMAX = {   # rad/s per gewricht (gewrichtszijde); differentieel: servosnelheid / 1.5
+    "hip_yaw": 9.0, "knee": 9.0, "ankle": 9.0, "neck_pitch": 9.0, "head_pitch": 8.1,
+    "hip_pitch": 9.0 / 1.5, "hip_roll": 9.0 / 1.5, "head_yaw": 8.1 / 1.5, "head_roll": 8.1 / 1.5,
+}
+
+
+def _est_vmax(name):
+    for k, v in EST_VMAX.items():
+        if name.endswith(k):
+            return v * EST_SPEED_FRAC
+    raise KeyError(name)
+
+
 class FilteredJointPositionAction(_JPA):
     def __init__(self, cfg, env):
         super().__init__(cfg, env)
         self._filt = self._entity.data.default_joint_pos[:, self._target_ids].clone()
         self._prev = self._filt.clone()
+        self._est = self._filt.clone()
+        self._est_prev = self._filt.clone()
+        self._vmax = torch.tensor([_est_vmax(n) for n in self._target_names], device=self.device)
+        self._dt = env.step_dt
 
     def process_actions(self, actions):
         super().process_actions(actions)
         self._prev = self._filt.clone()
         self._filt = self._filt + self.cfg.alpha * (self._processed_actions - self._filt)
         self._processed_actions = self._filt.clone()
+        # schatting van de gewrichtsstand aan het eind van deze stap (zoals de firmware)
+        self._est_prev = self._est.clone()
+        step = self._vmax * self._dt
+        self._est = self._est + torch.maximum(torch.minimum(self._filt - self._est, step), -step)
 
     def reset(self, env_ids=None):
         super().reset(env_ids)
@@ -987,6 +1012,19 @@ class FilteredJointPositionAction(_JPA):
             env_ids = slice(None)
         self._filt[env_ids] = q[env_ids]
         self._prev[env_ids] = q[env_ids]
+        self._est[env_ids] = q[env_ids]
+        self._est_prev[env_ids] = q[env_ids]
+
+
+def joint_pos_est(env, action_name: str = "joint_pos") -> torch.Tensor:
+    """Geschatte gewrichtsstand t.o.v. HOME (geen encoders op de robot)."""
+    t = env.action_manager.get_term(action_name)
+    return t._est - t._entity.data.default_joint_pos[:, t._target_ids]
+
+
+def joint_vel_est(env, action_name: str = "joint_pos") -> torch.Tensor:
+    t = env.action_manager.get_term(action_name)
+    return (t._est - t._est_prev) / t._dt
 
 
 def target_rate(env, action_name: str = "joint_pos") -> torch.Tensor:
@@ -1359,7 +1397,13 @@ def make_duckling_velocity_env_cfg(play: bool = False, rough: bool = False) -> M
     act_cfg.clip = {k: (math.radians(lo), math.radians(hi)) for k, (lo, hi) in JOINT_TARGET_RANGE_DEG.items()}
     cfg.actions["joint_pos"] = FilteredJointPositionActionCfg(
         **{f: getattr(act_cfg, f) for f in act_cfg.__dataclass_fields__})
-    cfg.rewards["target_rate"] = RewardTermCfg(func=target_rate, weight=-1.0)
+    cfg.rewards["target_rate"] = RewardTermCfg(func=target_rate, weight=-2.0)
+    # 2026-10-31: actor ziet de GESCHATTE gewrichtsstand (zoals op de robot), de critic de echte
+    from mjlab.utils.noise import UniformNoiseCfg as _Un
+    cfg.observations["actor"].terms["joint_pos"] = ObservationTermCfg(
+        func=joint_pos_est, noise=_Un(n_min=-0.02, n_max=0.02))
+    cfg.observations["actor"].terms["joint_vel"] = ObservationTermCfg(
+        func=joint_vel_est, noise=_Un(n_min=-0.3, n_max=0.3))   # 2026-10-31: -1 -> -2 (2900 bibberde nog ~20x/s)
     # 2026-10-30: massa per lichaam -10 .. +15 % (was alleen de romp +-5 %): het echte robotje
     # weegt waarschijnlijk meer dan het model (hars, draden, schroeven)
     if "randomize_mass_inertia" in cfg.events:
@@ -1396,14 +1440,14 @@ def make_duckling_velocity_env_cfg(play: bool = False, rough: bool = False) -> M
         # 2026-10-29 LOPEN: vx = fractie (0..1) van de 100%-snelheid van de stijl, draaien +-0.6 rad/s.
         # Eerst dit trainen op V2; volgen (DUCK_TASK=volgen) is een fine-tune daarna.
         cmd.ranges.lin_vel_x = (0.0, 1.0)
-        cmd.rel_turn_in_place_envs = 0.2   # 2026-10-30: 0.1 -> 0.2 (gedrag draait veel op de plaats)
+        cmd.rel_turn_in_place_envs = 0.3   # 2026-10-30: 0.1 -> 0.2, 2026-10-31: -> 0.3 (gedrag draait veel op de plaats)
         cfg.commands["twist"] = BehaviorVelocityCommandCfg(**vars(cmd))
         cfg.commands["head_pose"] = _BehaviorHeadPoseCfg(**vars(cfg.commands["head_pose"]))
         for name in ("follow_distance", "follow_bearing", "turn_toward", "push_off", "back_off"):
             R.pop(name, None)
         R["track_linear_velocity"].weight = 4.0
         R["track_angular_velocity"] = RewardTermCfg(
-            func=track_ang_two_scale, weight=4.0,
+            func=track_ang_two_scale, weight=6.0,   # 2026-10-31: 4 -> 6 (2900 haalde ~40 % van de draaisnelheid)
             params={"std_fine": 0.15, "std_coarse": 0.6, "command_name": "twist"})   # 2026-10-30: 0.25 -> 0.15 (1050 draaide niet)
         R["com_forward"].weight = 2.0
         R["stand_still"] = RewardTermCfg(func=stand_still, weight=3.0)

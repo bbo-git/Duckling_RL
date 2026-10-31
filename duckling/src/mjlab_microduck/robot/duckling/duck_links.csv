@@ -1,6 +1,6 @@
 onderdeel_pad,component,massa_fusion_g,com_x_mm,com_y_mm,com_z_mm,aantal_subonderdelen,echte_massa_g
 (root)/batterij,(body),31.239,9.435,-0.033,81.085,0,
-(root)/head_shell,(body),15.443,8.065,-1.202,150.411,0,
+(root)/head_shell,(body),15.443,8.065,-1.202,150.411,0,19.82
 (root)/teen_rechts,(body),44.222,3.333,-26.136,6.849,0,
 (root)/magneet_pith_houder_rechts,(body),0.655,-0.0,-12.716,59.561,0,
 (root)/jaw,(body),72.081,19.188,0.358,129.718,0,

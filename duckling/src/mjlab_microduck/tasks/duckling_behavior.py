@@ -76,6 +76,9 @@ SACCADE_THR = math.radians(12)   # kop draait pas als het doel > 12 gr verschove
 FIX_MIN = 0.6            # ... en hij minstens zo lang heeft gefixeerd (s)
 SACCADE_RATE = 3.0        # rad/s: snelle kopdraai (servo ~8)
 EDGE_TURN = 0.9           # rad (52 gr): zit hij en staat de actie verder opzij -> opstaan en draaien
+EDGE_FRAC = 0.6           # 2026-10-31: punt verder dan 60 % van de halve beeldhoek (18 gr) = rand -> meteen kijken
+SACCADE_FAST = 6.0        # rad/s: snelle kopdraai als het punt uit beeld dreigt te gaan / net kwijt is
+SEARCH_LOOK_LAST = 1.5    # s: bij kwijt eerst naar de laatste plek kijken
 LOOK_AMP = 1.0            # rad: rondkijken in rust/zoeken (2026-10-29: 0.6 -> 1.0, zag niets opzij)
 
 
@@ -265,15 +268,21 @@ class Behavior:
         # --- kop: vogel - fixeren, dan saccade
         self.t_look = self.t_look + dt
         look = LOOK_AMP * (0.6 * sin(0.55 * self.t_look) + 0.4 * sin(1.3 * self.t_look + 1.7))
-        tgt_yaw = where(vis, b, where((S == REST) | (S == SEARCH), look, self.g_yaw))
+        # ZOEKEN: eerst kijken waar hij het laatst was (1.5 s), dan pas rondkijken
+        lost_recent = (S == SEARCH) & (self.t_state < SEARCH_LOOK_LAST)
+        tgt_yaw = where(vis, b, where(lost_recent, self.last_b,
+                                      where((S == REST) | (S == SEARCH), look, self.g_yaw)))
         tgt_yaw = clip(tgt_yaw, -HEAD_YAW_MAX, HEAD_YAW_MAX)
         tgt_elev = where(vis, clip(self.last_e, HEAD_ELEV_MIN, HEAD_ELEV_MAX), self.g_elev * 0.98)
         self.t_fix = self.t_fix + dt
-        jump = (((tgt_yaw - self.g_yaw) ** 2 + (tgt_elev - self.g_elev) ** 2) > SACCADE_THR ** 2) & (self.t_fix > FIX_MIN)
+        # 2026-10-31: punt aan de rand van het beeld -> meteen (niet wachten op FIX_MIN) en snel kijken
+        urgent = vis & (absv(p["bx"]) > EDGE_FRAC * FOV_H)
+        jump = ((((tgt_yaw - self.g_yaw) ** 2 + (tgt_elev - self.g_elev) ** 2) > SACCADE_THR ** 2)
+                & ((self.t_fix > FIX_MIN) | urgent))
         self.g_yaw = where(jump, tgt_yaw, self.g_yaw)
         self.g_elev = where(jump, tgt_elev, self.g_elev)
         self.t_fix = where(jump, self.t_fix * 0, self.t_fix)
-        r = SACCADE_RATE * dt
+        r = where(urgent | lost_recent, SACCADE_FAST, SACCADE_RATE) * dt
         self.h_yaw = self.h_yaw + clip(self.g_yaw - self.h_yaw, -r, r)
         self.h_elev = self.h_elev + clip(self.g_elev - self.h_elev, -r, r)
         fix = (((self.g_yaw - self.h_yaw) ** 2 + (self.g_elev - self.h_elev) ** 2) < 1e-4)

@@ -368,6 +368,12 @@ def main():
         print(__doc__.split("Een rode bal")[0])
         t_next = time.time()
         last_state = None
+        # 2026-10-31: tempo zichtbaar: echte tijd vs simulatietijd, en voetstappen per seconde
+        soles = [m.geom(f"{x}_foot_collision").id for x in ("left", "right")]
+        was_down = [False, False]
+        steps = []                      # simulatietijden van neerzetten (beide voeten)
+        wall0, sim0 = time.time(), st["t"]
+        rate = {"rt": 1.0, "sps": 0.0}
         print("bal: pijltoetsen (klik eerst in het beeld), End = voor de robot, Home = camera erbij")
         while v.is_running():
             if keys.pop("reset", False):
@@ -379,12 +385,28 @@ def main():
                     v.cam.lookat[:2] = 0.5 * (robot.d.qpos[:2] + ball[:2]); v.cam.lookat[2] = 0.05
             robot.d.mocap_pos[ball_mocap] = ball
             p, state, twist, head, fix = control_step(ball)
+            down = [False, False]
+            for c in robot.d.contact[:robot.d.ncon]:
+                for i, g in enumerate(soles):
+                    if g in (c.geom1, c.geom2):
+                        down[i] = True
+            for i in range(2):
+                if down[i] and not was_down[i]:
+                    steps.append(st["t"])
+            was_down = down
+            steps = [x for x in steps if st["t"] - x < 2.0]
+            if time.time() - wall0 > 1.0:
+                rate["rt"] = (st["t"] - sim0) / (time.time() - wall0)
+                rate["sps"] = len(steps) / 2.0
+                wall0, sim0 = time.time(), st["t"]
             if state != last_state:
                 print(f"{st['t']:6.1f} s  {B.STATE_NAMES[state]:8s} (intensiteit {int(esp.mint)}, grootte {int(esp.msize)}, "
                       f"afstand {p['dist'][0] * 100:.0f} cm, zichtbaar {'ja' if p['vis'][0] > 0.5 else 'nee'})")
                 last_state = state
             try:
                 lt, rt = hud(p, state, twist, head, fix)
+                lt += "\ntempo t.o.v. echt\nvoetstappen/s (L+R)"
+                rt += f"\n{rate['rt']:.2f}x\n{rate['sps']:.1f}  (jouw loopje ~4.5)"
                 v.set_texts((mujoco.mjtFontScale.mjFONTSCALE_150, mujoco.mjtGridPos.mjGRID_TOPLEFT, lt, rt))
             except Exception:
                 pass

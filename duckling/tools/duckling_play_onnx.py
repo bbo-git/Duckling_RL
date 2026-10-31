@@ -45,6 +45,19 @@ FOLLOW = [False]  # camera follows the robot; G in the viewer toggles (default o
 import numpy as np
 import onnxruntime as ort
 import duckling_servo as DS
+ECHTE_OBS = bool(os.environ.get("DUCK_ECHTE_OBS"))   # 2026-10-31: netwerken van voor 31-10: echte gewrichtsstand
+EST_SPEED_FRAC = 0.75
+EST_VMAX = {"hip_yaw": 9.0, "knee": 9.0, "ankle": 9.0, "neck_pitch": 9.0, "head_pitch": 8.1,
+            "hip_pitch": 6.0, "hip_roll": 6.0, "head_yaw": 5.4, "head_roll": 5.4}
+
+
+def est_vmax(name):
+    for k, v in EST_VMAX.items():
+        if name.endswith(k):
+            return v * EST_SPEED_FRAC
+    raise KeyError(name)
+
+
 ACTION_FILTER_ALPHA = 1.0 if os.environ.get("DUCK_GEEN_FILTER") else 0.4   # 2026-10-30: = training; DUCK_GEEN_FILTER=1 voor netwerken van voor 30-10 middag
 
 # --- must match training -----------------------------------------------------
@@ -201,6 +214,7 @@ class Duckling:
         self.d.qpos[self.qadr] = self.home
         self.d.ctrl[:self.nj] = self.home
         self.filt = None
+        self.est = None
         mujoco.mj_forward(self.m, self.d)
         self.last_action = np.zeros(self.nj)
         self.prev_jvel = np.zeros(self.nj)
@@ -214,9 +228,13 @@ class Duckling:
         R = rot.reshape(3, 3)
         ang_vel_b = self.d.qvel[3:6].copy()          # free joint: already body frame
         grav_b = R.T @ np.array([0.0, 0.0, -1.0])
-        jpos = self.d.qpos[self.qadr] - self.home
-        jvel = self.prev_jvel                         # one control step old
-        self.prev_jvel = self.d.qvel[self.vadr].copy()
+        if ECHTE_OBS or getattr(self, "est", None) is None:
+            jpos = self.d.qpos[self.qadr] - self.home
+            jvel = self.prev_jvel                         # one control step old
+            self.prev_jvel = self.d.qvel[self.vadr].copy()
+        else:   # 2026-10-31: geschatte stand uit de eigen servodoelen (geen encoders), = training/firmware
+            jpos = self.est - self.home
+            jvel = (self.est - self.est_prev) / (TIMESTEP * DECIMATION)
         if self.grid is not None and not (np.hypot(twist[0], twist[1]) > 0.02 or abs(twist[2]) > 0.1):
             head = np.zeros(4)              # as in training: no look commands while standing still
         parts = [ang_vel_b, grav_b, jpos, jvel, self.last_action, twist, head, np.zeros(6)]
@@ -241,6 +259,12 @@ class Duckling:
             self.filt = self.d.qpos[self.qadr].copy()
         self.filt = self.filt + ACTION_FILTER_ALPHA * (target - self.filt)    # laagdoorlaat = training
         target = self.filt
+        if getattr(self, "est", None) is None:
+            self.est = self.d.qpos[self.qadr].copy()
+            self.vmax = np.array([est_vmax(n) for n in self.names])
+        self.est_prev = self.est.copy()
+        stp = self.vmax * TIMESTEP * DECIMATION
+        self.est = self.est + np.clip(self.filt - self.est, -stp, stp)
         for _ in range(DECIMATION):
             self.d.qfrc_applied[:] = 0.0
             if self.servo is not None:
