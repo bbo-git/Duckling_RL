@@ -126,6 +126,33 @@ class Scorer:
             except Exception:
                 zm.append(-np.min(np.linalg.norm(P - zmp[i], axis=1)))
         zm = np.array(zm) * 1000
+        # 2026-10-31: zwaartepunt zijwaarts t.o.v. de standvoet bij enkele steun (statisch, mm)
+        lat = []
+        for i in range(n):
+            c = g["contact"][i]
+            if c.sum() == 1:
+                k._set(g["root_pos"][i], g["root_quat"][i], q[i]); mujoco.mj_comPos(m, d)
+                s_ = int(np.argmax(c))
+                lat.append(abs(d.subtree_com[k.trunk][1] - d.site_xpos[self.sites[s_]][1]))
+        com_lat = float(np.mean(lat) * 1000) if lat else 0.0
+        # 2026-10-31: statisch koppel op knie en enkel van het standbeen (heel gewicht op die voet),
+        # als fractie van de ES9051-stall (0,0605 Nm)
+        Mg = float(m.body_subtreemass[k.trunk] * 9.81)
+        kl, al = [], []
+        for i in range(0, n, 2):
+            c = g["contact"][i]
+            k._set(g["root_pos"][i], g["root_quat"][i], q[i]); mujoco.mj_comPos(m, d)
+            for s_ in range(2):
+                if not c[s_]:
+                    continue
+                share = 1.0 if c.sum() == 1 else 0.5
+                F = np.array([0.0, 0.0, share * Mg]); pf = d.site_xpos[self.sites[s_]]
+                for jn, out in ((("left_knee", "right_knee")[s_], kl), (("left_ankle", "right_ankle")[s_], al)):
+                    j = m.joint(jn).id
+                    out.append(abs(np.dot(np.cross(pf - d.xanchor[j], F), d.xaxis[j])) / 0.0605)
+        knee_load = float(np.mean(kl)) if kl else 0.0
+        knee_peak = float(np.percentile(kl, 95)) if kl else 0.0
+        ankle_load = float(np.mean(al)) if al else 0.0
         # botsingen (benen; kop telt niet mee)
         pen = 0.0
         for i in range(0, n, 2):
@@ -149,15 +176,19 @@ class Scorer:
         return dict(zmp_out=float(np.mean(zm < -3)), zmp_worst=float(max(0, -zm.min())),
                     roll_mean=float(np.mean(roll)) if roll else 0, roll_max=float(np.max(roll)) if roll else 0,
                     speed_over=float(over), top=top, collide_mm=float(-pen * 1000), lim_hit=lim_hit,
-                    speed=float(g["vel_xy"][0]))
+                    speed=float(g["vel_xy"][0]), com_lat=com_lat, knee_load=knee_load,
+                    knee_peak=knee_peak, ankle_load=ankle_load)
 
     ROLL_W = 1.5
+    LAT_W = 0.0      # 2026-10-31: --zwaai: straf per mm zwaartepunt naast de standvoet
+    KNEE_W = 0.0     # 2026-10-31: --knie: straf per 1.0 statische kniebelasting (fractie stall) boven 30 %
 
     @classmethod
     def score(cls, r):
         return (10 * r["zmp_out"] + 0.3 * r["zmp_worst"] + cls.ROLL_W * max(0, r["roll_mean"] - 3)
                 + 0.3 * cls.ROLL_W * max(0, r["roll_max"] - 8) + 3 * r["speed_over"] + 5 * r["collide_mm"]
-                + 1.0 * r["lim_hit"])
+                + 1.0 * r["lim_hit"] + cls.LAT_W * r.get("com_lat", 0.0)
+                + cls.KNEE_W * max(0.0, r.get("knee_load", 0.0) - 0.3))
 
 
 def tune(scorer, p0, free, iters, seed=0, log=print):
@@ -214,7 +245,7 @@ def fmt(r):
     t = r["top"]
     return (f"ZMP buiten {100 * r['zmp_out']:.0f}% (max {r['zmp_worst']:.0f} mm), zool-roll gem {r['roll_mean']:.1f} max {r['roll_max']:.0f} gr, "
             f"heupservo {t['hip_pitch']:.1f} enkel {t['knee']:.1f} teen {t['ankle']:.1f} rad/s, botsing {r['collide_mm']:.1f} mm, limiet {r['lim_hit']}, "
-            f"{r['speed'] * 100:.1f} cm/s")
+            f"{r['speed'] * 100:.1f} cm/s, knie {100 * r.get('knee_load', 0):.0f}% (p95 {100 * r.get('knee_peak', 0):.0f}%) enkel {100 * r.get('ankle_load', 0):.0f}% van stall")
 
 
 def main():
@@ -228,6 +259,9 @@ def main():
     ap.add_argument("--rooster", action="store_true",
                     help="ook langzaam en in bochten scoren (de regels van walk_speed.py)")
     ap.add_argument("--roll", type=float, default=1.5, help="gewicht zool-kanteling (hoger = vlakkere zolen)")
+    ap.add_argument("--alleen", action="store_true", help="alleen de --grens-parameters vrij (rest = jouw loopje)")
+    ap.add_argument("--zwaai", type=float, default=0.0, help="straf per mm zwaartepunt naast de standvoet")
+    ap.add_argument("--knie", type=float, default=0.0, help="straf op statische kniebelasting boven 30 %% van stall")
     ap.add_argument("--grens", nargs="*", default=[],
                     help="eigen grenzen, bv. width_m=0.045:0.054 (voeten smaller) of lift_hip_deg=20:30")
     a = ap.parse_args()
@@ -236,7 +270,9 @@ def main():
     Scorer.ROLL_W = a.roll
     if a.rooster:
         GRID_VARIANTS[:] = [(0.2, 0.0), (0.6, 0.0), (1.0, 0.0), (1.0, 45.0), (0.0, 90.0)]
-    free = list(FREE[a.stijl])
+    Scorer.LAT_W = a.zwaai
+    Scorer.KNEE_W = a.knie
+    free = [] if a.alleen else list(FREE[a.stijl])
     for g in a.grens:
         k, rng = g.split("=")
         lo, hi = (float(x) for x in rng.split(":"))

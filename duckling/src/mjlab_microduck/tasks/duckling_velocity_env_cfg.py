@@ -150,7 +150,10 @@ JOINT_TARGET_RANGE_DEG = {
 # free again, the follow rewards say where to go
 # 2026-10-30 (Jairo): hip_yaw 0.3 -> 1.0: de animatie stuurt de heup-yaw (tenen stonden naar binnen;
 # het rooster draait met de heup-yaw)
-IMITATION_JOINT_WEIGHT = {"hip_yaw": 1.0, "hip_roll": 1.0, "hip_pitch": 1.0, "knee": 1.0, "ankle": 0.1}
+# 2026-10-31 (Jairo): zijwaarts zwaaien eruit, knie/enkel ("enkels en tenen") meer gebruiken:
+# hip_roll 1 -> 3, knee 1 -> 2, ankle 0.1 -> 1. Run 400/1200: heup-roll 2x zo groot en tegengesteld aan
+# jouw loopje, knie maar ~45 % en enkel ~65 % van de uitslag.
+IMITATION_JOINT_WEIGHT = {"hip_yaw": 1.0, "hip_roll": 3.0, "hip_pitch": 1.0, "knee": 2.0, "ankle": 1.0}
 
 
 _STYLE_CACHE = {}
@@ -1046,6 +1049,12 @@ def head_target_rate(env, action_name: str = "joint_pos") -> torch.Tensor:
     return (torch.square(t._filt - t._prev) * t._head).sum(-1)
 
 
+def trunk_roll_rate(env) -> torch.Tensor:
+    """2026-10-31: zijwaarts schommelen van de romp: (hoeksnelheid om de lengte-as)^2, romp-assen."""
+    w = env.scene["robot"].data.root_link_ang_vel_b
+    return torch.square(w[:, 0])
+
+
 class feet_parallel:
     """2026-10-30 (Jairo): BELONING voor tenen recht vooruit, zoals jouw loopje: per voet de yaw van
     de zool t.o.v. de romp (naar buiten +) tegen die van de referentie (= referentie-heup-yaw; in
@@ -1411,6 +1420,7 @@ def make_duckling_velocity_env_cfg(play: bool = False, rough: bool = False) -> M
         **{f: getattr(act_cfg, f) for f in act_cfg.__dataclass_fields__})
     cfg.rewards["target_rate"] = RewardTermCfg(func=target_rate, weight=-2.0)
     cfg.rewards["head_target_rate"] = RewardTermCfg(func=head_target_rate, weight=-6.0)   # 2026-10-31: kop rustiger
+    cfg.rewards["trunk_roll_rate"] = RewardTermCfg(func=trunk_roll_rate, weight=-0.3)   # 2026-10-31: niet zijwaarts zwaaien
     # 2026-10-31: actor ziet de GESCHATTE gewrichtsstand (zoals op de robot), de critic de echte
     from mjlab.utils.noise import UniformNoiseCfg as _Un
     cfg.observations["actor"].terms["joint_pos"] = ObservationTermCfg(
