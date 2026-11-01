@@ -35,7 +35,8 @@ en later op de RP2350 (overzetten naar C/MicroPython: alleen + - * / min max abs
        ~10 s niets -> RUST, kwijt -> ZOEKEN (5 s) -> RUST
    GROOTTE is de grootte zoals de camera hem ziet: dezelfde hand is dichtbij groter
    (schijnbaar = echte grootte x 50 cm / afstand).
-   De kop beweegt als een vogel: stil fixeren, dan een snelle draai (saccade).
+   De kop beweegt als een Pixar-personage: anticipation, doorschieten/terugveren, ademen,
+   verrast (omhoog, dan scheef), dubbele blik, "hm?"-kopje.
 
 3. SIMULATIE (alleen training): virtuele persoon + nep-ESP met ruis, vertraging en uitval.
 """
@@ -82,6 +83,15 @@ SEARCH_LOOK_LAST = 1.5    # s: bij kwijt eerst naar de laatste plek kijken
 LOOK_T_MIN, LOOK_T_MAX = 0.8, 3.5   # 2026-11-01: s tussen twee kijkpunten bij rondkijken
 LOOK_UP_P, LOOK_UP_MIN = 0.3, 0.25  # kans op omhoog kijken, en minimaal hoeveel (rad)
 LOOK_TILT_P, LOOK_TILT = 0.4, 0.15  # kans op een scheef kopje, en max kanteling (rad, kop-roll)
+HEAD_W, HEAD_ZETA = 14.0, 0.55     # 2026-11-01 Pixar: veer (rad/s) en demping -> ~12 % doorschieten
+ANT_MIN, ANT_FRAC, ANT_MAX, ANT_T = 0.35, 0.10, 0.07, 0.12   # anticipation: vanaf 20 gr, 10 % terug (max 4 gr), 0.12 s
+BREATH = 0.012            # rad: ademen (nooit dood stil)
+APPEAR_GAP = 1.0          # s niets gezien en dan iets: verrast
+SRP_ELEV, SRP_TILT = 0.22, 0.12     # rad: verrast kop omhoog, daarna nieuwsgierig scheef
+SRP_COOL = 3.0            # s: niet steeds opnieuw schrikken
+SRP_IDLE_P = 0.15         # rondkijkend: kans dat hij "iets ziet" bij een nieuw kijkpunt
+DBL_P, DBL_SIDE, DBL_T1, DBL_T2 = 0.5, 0.5, 0.35, 0.65   # dubbele blik: kans, vanaf 29 gr opzij, fasen (s)
+HM_EVERY, HM_TILT = 4.0, 0.12       # "hm?": om de ~4 s een scheef kopje als hij iets stils bekijkt
 LOOK_AMP = 1.0            # rad: rondkijken in rust/zoeken (2026-10-29: 0.6 -> 1.0, zag niets opzij)
 
 
@@ -147,16 +157,24 @@ class Behavior:
         for k in ("t_state", "t_idle", "t_lost", "t_move", "t_still", "t_dance", "t_nodance",
                   "last_b", "last_d", "last_e", "vx", "wz", "h_yaw", "h_elev", "g_yaw", "g_elev",
                   "t_fix", "orbit_side", "t_look", "d_f",
-                  "lk_t", "lk_yaw", "lk_elev", "lk_roll", "h_roll"):
+                  "lk_t", "lk_yaw", "lk_elev", "lk_roll", "h_roll",
+                  "v_yaw", "v_elev", "v_roll", "ant_t", "ant_yaw", "ant_elev", "srp_a", "srp_side",
+                  "dbl_yaw", "hm_side", "mint_prev"):
             setattr(self, k, copy(z))
+        for k in ("srp_t", "dbl_t", "hm_t", "t_lost_prev"):
+            setattr(self, k, copy(z) + 99.0)
         self.last_d = self.last_d + FOLLOW_DIST
         self.d_f = self.d_f + FOLLOW_DIST
 
     def reset(self, ids, state=REST):
         for k in ("t_state", "t_idle", "t_lost", "t_move", "t_still", "t_dance", "t_nodance",
                   "last_b", "last_e", "vx", "wz", "h_yaw", "h_elev", "g_yaw", "g_elev", "t_fix",
-                  "orbit_side", "t_look", "lk_t", "lk_yaw", "lk_elev", "lk_roll", "h_roll"):
+                  "orbit_side", "t_look", "lk_t", "lk_yaw", "lk_elev", "lk_roll", "h_roll",
+                  "v_yaw", "v_elev", "v_roll", "ant_t", "ant_yaw", "ant_elev", "srp_a", "srp_side",
+                  "dbl_yaw", "hm_side", "mint_prev"):
             getattr(self, k)[ids] = 0.0
+        for k in ("srp_t", "dbl_t", "hm_t", "t_lost_prev"):
+            getattr(self, k)[ids] = 99.0
         self.last_d[ids] = FOLLOW_DIST
         self.d_f[ids] = FOLLOW_DIST
         self.state[ids] = state
@@ -274,10 +292,13 @@ class Behavior:
         self.vx = where(stop & (absv(self.vx) < 0.01), self.vx * 0, self.vx)
         self.wz = where(stop & (absv(self.wz) < 0.05), self.wz * 0, self.wz)
 
-        # --- kop: vogel - fixeren, dan saccade
+        # --- kop: Pixar-stijl (2026-11-01, Jairo: "geen sentinel, anticipation en follow through")
+        # Kijkrichting kiezen zoals eerst (fixeren, dan een kijkwissel), maar de kop BEWEEGT als een
+        # personage: eerst een klein tegenbewegingetje (anticipation), dan een snelle beweging die
+        # iets doorschiet en terugveert (follow-through, ondergedempte veer), nooit helemaal stil
+        # (ademen). Reacties: verrast (kop omhoog/naar achter, dan nieuwsgierig scheef), dubbele
+        # blik (double take), een "hm?"-kopje bij iets wat stil staat.
         self.t_look = self.t_look + dt
-        # 2026-11-01: rondkijken als een vogel i.p.v. een sinus: om de 0.8-3.5 s een nieuw willekeurig
-        # punt, soms omhoog (30 %), soms met een nieuwsgierig scheef kopje (40 %)
         self.lk_t = self.lk_t - dt
         nieuw = self.lk_t <= 0
         u = rand_like(self.lk_t)
@@ -289,32 +310,90 @@ class Behavior:
         scheef = rand_like(u) < LOOK_TILT_P
         tilt = (2 * rand_like(u) - 1) * LOOK_TILT
         self.lk_roll = where(nieuw, where(scheef, tilt, tilt * 0), self.lk_roll)
-        look = self.lk_yaw
-        # ZOEKEN: eerst kijken waar hij het laatst was (1.5 s), dan pas rondkijken
         lost_recent = (S == SEARCH) & (self.t_state < SEARCH_LOOK_LAST)
-        tgt_yaw = where(vis, b, where(lost_recent, self.last_b,
-                                      where((S == REST) | (S == SEARCH), look, self.g_yaw)))
-        tgt_yaw = clip(tgt_yaw, -HEAD_YAW_MAX, HEAD_YAW_MAX)
         rondkijk = ~vis & ((S == REST) | ((S == SEARCH) & ~lost_recent))
+
+        # reacties starten
+        self.srp_t = self.srp_t + dt
+        self.dbl_t = self.dbl_t + dt
+        self.hm_t = self.hm_t + dt
+        verschijnt = vis & (self.t_lost_prev > APPEAR_GAP)          # iets nieuws in beeld
+        feller = vis & (p["mint"] > self.mint_prev + 0.5) & (p["mint"] > 1.5)   # actie wordt heftiger
+        start_srp = (verschijnt | feller) & (self.srp_t > SRP_COOL)
+        # rondkijkend "ziet hij soms iets" (klein schrikje bij een nieuw kijkpunt)
+        mini = rondkijk & nieuw & (rand_like(u) < SRP_IDLE_P) & (self.srp_t > SRP_COOL)
+        opzij = absv(b - self.h_yaw) > DBL_SIDE
+        dubbel = start_srp & opzij & (rand_like(u) < DBL_P) & (S == REST)
+        self.dbl_yaw = where(dubbel, self.h_yaw, self.dbl_yaw)
+        self.dbl_t = where(dubbel, self.dbl_t * 0, self.dbl_t)
+        # bij een dubbele blik komt het schrikken pas bij de tweede (snelle) blik
+        self.srp_a = where(start_srp, clip(0.5 + 0.25 * p["mint"], 0.5, 1.0) + self.srp_a * 0,
+                           where(mini, self.srp_a * 0 + 0.4, self.srp_a))
+        self.srp_t = where(start_srp, where(dubbel, self.srp_t * 0 - DBL_T2, self.srp_t * 0),
+                           where(mini, self.srp_t * 0, self.srp_t))
+        self.srp_side = where(start_srp | mini, where(rand_like(u) < 0.5, u * 0 + 1.0, u * 0 - 1.0), self.srp_side)
+        self.t_lost_prev = self.t_lost
+        self.mint_prev = where(vis, p["mint"], self.mint_prev * 0)
+
+        # verrast-envelop: snel omhoog (0.1 s), vasthouden, langzaam weg; daarna nieuwsgierig scheef
+        t = self.srp_t
+        env_up = clip(t / 0.1, 0.0, 1.0) * clip(1.0 - (t - 0.45) / 0.7, 0.0, 1.0)
+        env_tilt = clip((t - 0.4) / 0.3, 0.0, 1.0) * clip(1.0 - (t - 1.8) / 0.6, 0.0, 1.0)
+        # "hm?": persoon in beeld maar stil/licht en de kop staat stil -> af en toe kopje scheef
+        hm_ok = vis & (p["mint"] < 1.5) & ((S == REST) | (S == WATCH))
+        start_hm = hm_ok & (self.hm_t > HM_EVERY) & (self.t_fix > 1.0)
+        self.hm_side = where(start_hm, where(rand_like(u) < 0.5, u * 0 + 1.0, u * 0 - 1.0), self.hm_side)
+        self.hm_t = where(start_hm, self.hm_t * 0, where(hm_ok, self.hm_t, clip(self.hm_t, 0.0, HM_EVERY - 1.0)))
+        th = self.hm_t
+        env_hm = clip(th / 0.35, 0.0, 1.0) * clip(1.0 - (th - 1.4) / 0.5, 0.0, 1.0) * as_float(hm_ok)
+
+        # kijkdoel
+        tgt_yaw = where(vis, b, where(lost_recent, self.last_b,
+                                      where((S == REST) | (S == SEARCH), self.lk_yaw, self.g_yaw)))
+        # dubbele blik: half kijken, terug naar waar hij keek, dan snel echt kijken
+        d1 = self.dbl_t < DBL_T1
+        d2 = (self.dbl_t >= DBL_T1) & (self.dbl_t < DBL_T2)
+        tgt_yaw = where(d1, 0.5 * (self.dbl_yaw + b), where(d2, self.dbl_yaw, tgt_yaw))
+        in_dbl = self.dbl_t < DBL_T2 + 0.1
+        tgt_yaw = clip(tgt_yaw, -HEAD_YAW_MAX, HEAD_YAW_MAX)
         tgt_elev = where(vis, clip(self.last_e, HEAD_ELEV_MIN, HEAD_ELEV_MAX),
                          where(rondkijk, self.lk_elev, self.g_elev * 0.98))
         self.t_fix = self.t_fix + dt
-        # 2026-10-31: punt aan de rand van het beeld -> meteen (niet wachten op FIX_MIN) en snel kijken
         urgent = vis & (absv(p["bx"]) > EDGE_FRAC * FOV_H)
-        jump = ((((tgt_yaw - self.g_yaw) ** 2 + (tgt_elev - self.g_elev) ** 2) > SACCADE_THR ** 2)
-                & ((self.t_fix > FIX_MIN) | urgent))
+        dy, de = tgt_yaw - self.g_yaw, tgt_elev - self.g_elev
+        jump = (((dy ** 2 + de ** 2) > SACCADE_THR ** 2) & ((self.t_fix > FIX_MIN) | urgent)) | in_dbl | (start_srp & (dy ** 2 > 0.03 ** 2))
+        # anticipation: bij een grote kijkwissel eerst even een klein beetje de andere kant op
+        groot = jump & ((dy ** 2 + de ** 2) > ANT_MIN ** 2) & ~urgent & ~lost_recent & ~in_dbl
+        self.ant_t = where(groot, self.ant_t * 0 + ANT_T, self.ant_t - dt)
+        self.ant_yaw = where(groot, self.h_yaw - clip(ANT_FRAC * dy, -ANT_MAX, ANT_MAX), self.ant_yaw)
+        self.ant_elev = where(groot, self.h_elev - clip(ANT_FRAC * de, -ANT_MAX, ANT_MAX), self.ant_elev)
         self.g_yaw = where(jump, tgt_yaw, self.g_yaw)
         self.g_elev = where(jump, tgt_elev, self.g_elev)
         self.t_fix = where(jump, self.t_fix * 0, self.t_fix)
-        r = where(urgent | lost_recent, SACCADE_FAST, SACCADE_RATE) * dt
-        self.h_yaw = self.h_yaw + clip(self.g_yaw - self.h_yaw, -r, r)
-        self.h_elev = self.h_elev + clip(self.g_elev - self.h_elev, -r, r)
-        fix = (((self.g_yaw - self.h_yaw) ** 2 + (self.g_elev - self.h_elev) ** 2) < 1e-4)
+        ant = self.ant_t > 0
+        # ademen: kleine trage beweging zodat hij nooit dood stil staat
+        adem = BREATH * sin(1.3 * self.t_look + 5.0 * self.lk_yaw)
+        goal_yaw = where(ant, self.ant_yaw, self.g_yaw) + 0.6 * adem
+        goal_elev = (where(ant, self.ant_elev, self.g_elev) + adem
+                     + SRP_ELEV * self.srp_a * env_up)
+        goal_elev = clip(goal_elev, HEAD_ELEV_MIN, HEAD_ELEV_MAX)
+        goal_roll = (where(rondkijk, self.lk_roll, self.lk_roll * 0)
+                     + SRP_TILT * self.srp_a * self.srp_side * env_tilt
+                     + HM_TILT * self.hm_side * env_hm)
+        goal_roll = clip(goal_roll, -LOOK_TILT - 0.05, LOOK_TILT + 0.05)
+
+        # ondergedempte veer = slow in, doorschieten en terugveren (follow-through)
+        vmax = where(urgent | lost_recent | (self.dbl_t < DBL_T2 + 0.4) | (self.srp_t < 0.15),
+                     SACCADE_FAST + u * 0, SACCADE_RATE + u * 0)
+        w2, c = HEAD_W ** 2, 2 * HEAD_ZETA * HEAD_W
+        self.v_yaw = clip(self.v_yaw + (w2 * (goal_yaw - self.h_yaw) - c * self.v_yaw) * dt, -vmax, vmax)
+        self.v_elev = clip(self.v_elev + (w2 * (goal_elev - self.h_elev) - c * self.v_elev) * dt, -vmax, vmax)
+        self.v_roll = clip(self.v_roll + (w2 * (goal_roll - self.h_roll) - c * self.v_roll) * dt, -2.0, 2.0)
+        self.h_yaw = self.h_yaw + self.v_yaw * dt
+        self.h_elev = self.h_elev + self.v_elev * dt
+        self.h_roll = self.h_roll + self.v_roll * dt
+        fix = (((self.g_yaw - self.h_yaw) ** 2 + (self.g_elev - self.h_elev) ** 2) < 1e-3) & (absv(self.v_yaw) < 0.1)
         # nek omlaag (-) en kop omhoog (+) geven samen elevatie: elk de helft
-        # scheef kopje alleen bij rondkijken; anders langzaam terug naar recht
-        tgt_roll = where(rondkijk, self.lk_roll, self.lk_roll * 0)
-        rr = 1.0 * dt
-        self.h_roll = self.h_roll + clip(tgt_roll - self.h_roll, -rr, rr)
         head = (-0.5 * self.h_elev, 0.5 * self.h_elev, self.h_yaw, self.h_roll)
         head = torch.stack(head, -1) if _t(self.h_yaw) else np.stack(head, -1)
         return self.vx, self.wz, head, fix
