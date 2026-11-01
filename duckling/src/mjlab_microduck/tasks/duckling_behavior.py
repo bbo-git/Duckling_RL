@@ -94,6 +94,10 @@ DBL_P, DBL_SIDE, DBL_T1, DBL_T2 = 0.5, 0.5, 0.35, 0.65   # dubbele blik: kans, v
 HM_EVERY, HM_TILT = 3.0, 0.2       # "hm?": om de ~4 s een scheef kopje als hij iets stils bekijkt
 LOOK_STEP = 0.45          # rad: nieuw rondkijkpunt minstens 26 gr van het vorige (anders zie je niks)
 GL_EVERY, GL_T = 5.0, 0.7          # bekijkt hij iets stils: gemiddeld om de 5 s even weg- en terugkijken
+MEM_T = 20.0              # 2026-11-01 (Jairo): onthoudt ~20 s aan welke kant de bal uit beeld ging
+MEM_P = 0.85              # ... en kiest dan zoveel vaker een kijkpunt aan die kant (neemt af met de tijd)
+REST_LOOK_LAST = 2.0      # s: zittend kwijt -> eerst nakijken waar hij heen ging
+PEEK = 0.3                # rad: ... een stukje voorbij de plek waar hij uit beeld ging
 LOOK_AMP = 1.0            # rad: rondkijken in rust/zoeken (2026-10-29: 0.6 -> 1.0, zag niets opzij)
 
 
@@ -161,7 +165,7 @@ class Behavior:
                   "t_fix", "orbit_side", "t_look", "d_f",
                   "lk_t", "lk_yaw", "lk_elev", "lk_roll", "h_roll",
                   "v_yaw", "v_elev", "v_roll", "ant_t", "ant_yaw", "ant_elev", "srp_a", "srp_side",
-                  "dbl_yaw", "hm_side", "mint_prev", "gl_off"):
+                  "dbl_yaw", "hm_side", "mint_prev", "gl_off", "ex_side"):
             setattr(self, k, copy(z))
         for k in ("srp_t", "dbl_t", "hm_t", "t_lost_prev", "gl_t"):
             setattr(self, k, copy(z) + 99.0)
@@ -173,7 +177,7 @@ class Behavior:
                   "last_b", "last_e", "vx", "wz", "h_yaw", "h_elev", "g_yaw", "g_elev", "t_fix",
                   "orbit_side", "t_look", "lk_t", "lk_yaw", "lk_elev", "lk_roll", "h_roll",
                   "v_yaw", "v_elev", "v_roll", "ant_t", "ant_yaw", "ant_elev", "srp_a", "srp_side",
-                  "dbl_yaw", "hm_side", "mint_prev", "gl_off"):
+                  "dbl_yaw", "hm_side", "mint_prev", "gl_off", "ex_side"):
             getattr(self, k)[ids] = 0.0
         for k in ("srp_t", "dbl_t", "hm_t", "t_lost_prev", "gl_t"):
             getattr(self, k)[ids] = 99.0
@@ -200,6 +204,10 @@ class Behavior:
         self.last_e = where(vis, e, self.last_e)
         self.t_lost = where(vis, self.t_lost * 0, self.t_lost + dt)
         self.d_f = where(vis, self.d_f + min(1.0, dt / D_TAU) * (d - self.d_f), self.d_f)
+        # aan welke kant ging hij uit beeld: rand van het beeld waar hij zat, anders de bewegingsrichting
+        kant = where(absv(p["bx"]) > 0.15, where(p["bx"] > 0, b * 0 + 1.0, b * 0 - 1.0),
+                     where(absv(p["tflow"]) > 0.1, where(p["tflow"] > 0, b * 0 + 1.0, b * 0 - 1.0), self.ex_side))
+        self.ex_side = where(vis, kant, self.ex_side)
         b, d = self.last_b, self.d_f
         seen = self.t_lost < LOST_TO_SEARCH
         # wat de persoon doet
@@ -308,6 +316,10 @@ class Behavior:
         stap = where(rand_like(u) < 0.5, u * 0 + 1.0, u * 0 - 1.0) * (LOOK_STEP + 0.6 * rand_like(u))
         ny = self.lk_yaw + stap
         ny = where(absv(ny) > LOOK_AMP, self.lk_yaw - stap, ny)
+        # geheugen: vaker (en minder ver) kijken aan de kant waar de bal verdween
+        geheugen = clip(1.0 - self.t_lost / MEM_T, 0.0, 1.0)
+        daar = self.last_b + self.ex_side * (0.1 + 0.5 * rand_like(u))
+        ny = where(rand_like(u) < MEM_P * geheugen, daar, ny)
         self.lk_yaw = where(nieuw, clip(ny, -LOOK_AMP, LOOK_AMP), self.lk_yaw)
         omhoog = rand_like(u) < LOOK_UP_P
         elev = where(omhoog, LOOK_UP_MIN + (HEAD_ELEV_MAX - LOOK_UP_MIN) * rand_like(u), -0.1 + 0.25 * rand_like(u))
@@ -315,7 +327,8 @@ class Behavior:
         scheef = rand_like(u) < LOOK_TILT_P
         tilt = (2 * rand_like(u) - 1) * LOOK_TILT
         self.lk_roll = where(nieuw, where(scheef, tilt, tilt * 0), self.lk_roll)
-        lost_recent = (S == SEARCH) & (self.t_state < SEARCH_LOOK_LAST)
+        lost_recent = (((S == SEARCH) & (self.t_state < SEARCH_LOOK_LAST))
+                       | ((S == REST) & ~vis & (self.t_lost < REST_LOOK_LAST)))
         rondkijk = ~vis & ((S == REST) | ((S == SEARCH) & ~lost_recent))
 
         # reacties starten
@@ -361,7 +374,7 @@ class Behavior:
         terug = (self.gl_t >= GL_T) & (self.gl_t < GL_T + 0.6)   # na het wegkijken: terug naar het punt
         rondkijk = rondkijk & ~(in_gl | terug)
         # kijkdoel
-        tgt_yaw = where(vis, b, where(lost_recent, self.last_b,
+        tgt_yaw = where(vis, b, where(lost_recent, self.last_b + PEEK * self.ex_side,
                                       where((S == REST) | (S == SEARCH), self.lk_yaw, self.g_yaw)))
         # dubbele blik: half kijken, terug naar waar hij keek, dan snel echt kijken
         d1 = self.dbl_t < DBL_T1
@@ -371,12 +384,13 @@ class Behavior:
         in_dbl = self.dbl_t < DBL_T2 + 0.1
         tgt_yaw = clip(tgt_yaw, -HEAD_YAW_MAX, HEAD_YAW_MAX)
         tgt_elev = where(vis | in_gl | terug, clip(self.last_e, HEAD_ELEV_MIN, HEAD_ELEV_MAX),
-                         where(rondkijk, self.lk_elev, self.g_elev * 0.98))
+                         where(lost_recent, clip(self.last_e, HEAD_ELEV_MIN, HEAD_ELEV_MAX),
+                               where(rondkijk, self.lk_elev, self.g_elev * 0.98)))
         self.t_fix = self.t_fix + dt
         urgent = vis & (absv(p["bx"]) > EDGE_FRAC * FOV_H)
         dy, de = tgt_yaw - self.g_yaw, tgt_elev - self.g_elev
         jump = ((((dy ** 2 + de ** 2) > SACCADE_THR ** 2) & ((self.t_fix > FIX_MIN) | urgent)) | in_dbl
-                | (self.gl_t < GL_T + 0.6)) | (start_srp & (dy ** 2 > 0.03 ** 2))
+                | (self.gl_t < GL_T + 0.6) | lost_recent) | (start_srp & (dy ** 2 > 0.03 ** 2))
         # anticipation: bij een grote kijkwissel eerst even een klein beetje de andere kant op
         groot = jump & ((dy ** 2 + de ** 2) > ANT_MIN ** 2) & ~urgent & ~lost_recent & ~in_dbl
         self.ant_t = where(groot, self.ant_t * 0 + ANT_T, self.ant_t - dt)

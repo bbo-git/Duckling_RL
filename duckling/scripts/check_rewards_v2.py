@@ -42,7 +42,7 @@ def main():
         n = int(ref.length[g]); f = ph * n; i0 = int(f) % n; w = f - math.floor(f)
         return (1 - w) * table[g, i0] + w * table[g, (i0 + 1) % n]
 
-    kinds = ["eigen loopje", "loopje andere stijl", "trappelen op de plaats", "stilstaan", "schuifelen"]
+    kinds = ["eigen loopje", "loopje andere stijl", "trappelen op de plaats", "stilstaan", "schuifelen", "heup-pitch/enkel vast"]
     res = {}
     for st in range(nS):
         v = float(ref.v100_s[st]) * FRAC
@@ -67,6 +67,15 @@ def main():
                     ph2 = (2 * t / cyc) % 1.0
                     q[0, legs] = home[0, legs] + 0.4 * (sample(ref.q, g, ph2) - ref.q[g, :int(ref.length[g])].mean(0))
                     z = D.HOME_TRUNK_HEIGHT - 0.006; x, vx = 0.3 * x, 0.3 * v
+                elif kind == "heup-pitch/enkel vast":
+                    # 2026-11-01: wat run 300 deed: loopje, maar heup-pitch en enkel ~20 %, dubbel tempo
+                    ph2 = (2 * t / cyc) % 1.0
+                    qr = sample(ref.q, g, ph2); mean = ref.q[g, :int(ref.length[g])].mean(0)
+                    q[0, legs] = qr
+                    for j, nm in enumerate(D.LEG_JOINTS):
+                        if nm.endswith(("hip_pitch", "ankle")):
+                            q[0, legs[j]] = home[0, legs[j]] + 0.2 * (qr[j] - mean[j])
+                    z = float(sample(ref.h, g, ph2)); x, vx = 0.6 * x, 0.6 * v
                 dq = torch.zeros_like(q) if prev_q is None else (q - prev_q) / env.step_dt
                 prev_q = q
                 n = env.num_envs

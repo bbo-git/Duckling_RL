@@ -153,7 +153,9 @@ JOINT_TARGET_RANGE_DEG = {
 # 2026-10-31 (Jairo): zijwaarts zwaaien eruit, knie/enkel ("enkels en tenen") meer gebruiken:
 # hip_roll 1 -> 3, knee 1 -> 2, ankle 0.1 -> 1. Run 400/1200: heup-roll 2x zo groot en tegengesteld aan
 # jouw loopje, knie maar ~45 % en enkel ~65 % van de uitslag.
-IMITATION_JOINT_WEIGHT = {"hip_yaw": 1.0, "hip_roll": 3.0, "hip_pitch": 1.0, "knee": 2.0, "ankle": 1.0}
+# 2026-11-01 (Jairo: "werk maken van pitch in heup en enkel"): run 300 schuifelde met heup-pitch/enkel
+# ~vast; dat kostte maar 1/9 van de imitatiefout. hip_pitch 1 -> 3, ankle 1 -> 2.
+IMITATION_JOINT_WEIGHT = {"hip_yaw": 1.0, "hip_roll": 3.0, "hip_pitch": 3.0, "knee": 2.0, "ankle": 2.0}
 
 
 _STYLE_CACHE = {}
@@ -1276,9 +1278,12 @@ def home_pose_standing(env, std: float = 0.15) -> torch.Tensor:
     return r * (~_moving(env)).float()
 
 
-def flat_feet(env, sensor_name: str = "feet_ground_contact", std_deg: float = 8.0) -> torch.Tensor:
+def flat_feet(env, sensor_name: str = "feet_ground_contact", std_deg: float = 8.0,
+              command_name: str = "twist") -> torch.Tensor:
     """Soles flat on the floor while they carry weight (no ankle roll on this robot, so a
-    tilted sole means standing on its edge). Mean over the feet in contact."""
+    tilted sole means standing on its edge). Mean over the feet in contact.
+    2026-11-01: alleen bij STILSTAAN. Lopend rolt jouw loopje over hiel en teen (enkel-pitch);
+    plat houden kostte het eigen loopje 1.5 van de 2 punten en hield de enkel vast."""
     asset = env.scene["robot"]
     ids = getattr(env, "_duck_toe_ids", None)
     if ids is None:
@@ -1291,7 +1296,8 @@ def flat_feet(env, sensor_name: str = "feet_ground_contact", std_deg: float = 8.
     r = torch.exp(-torch.square(tilt / math.radians(std_deg)))
     found = env.scene.sensors[sensor_name].data.found.reshape(env.num_envs, -1)[:, :2] > 0
     n = found.float().sum(-1)
-    return torch.where(n > 0, (r * found.float()).sum(-1) / n.clamp(min=1), torch.zeros_like(n))
+    r = torch.where(n > 0, (r * found.float()).sum(-1) / n.clamp(min=1), torch.zeros_like(n))
+    return r * (~_moving(env, command_name)).float()
 
 
 def make_duckling_velocity_env_cfg(play: bool = False, rough: bool = False) -> ManagerBasedRlEnvCfg:
@@ -1344,7 +1350,7 @@ def make_duckling_velocity_env_cfg(play: bool = False, rough: bool = False) -> M
     R["walk_imitation"] = RewardTermCfg(func=walk_imitation, weight=IMITATION_WEIGHT,
                                         params={"std": IMITATION_STD, "std_fine": 0.10})   # 2026-10-30: + fijn (250 waggelde: heup-roll 37 gr i.p.v. 12)
     R["contact_schedule"] = RewardTermCfg(func=contact_schedule, weight=4.0)   # timing as a guide
-    R["swing_clearance"] = RewardTermCfg(func=swing_clearance, weight=1.5,   # lift the swing foot
+    R["swing_clearance"] = RewardTermCfg(func=swing_clearance, weight=3.0,   # 2026-11-01: 1.5 -> 3   # lift the swing foot
                                          params={"target": SWING_LIFT})
     R["trunk_height"] = RewardTermCfg(func=trunk_height_tracking, weight=1.5,   # 2026-10-13: 1 -> 1.5, std 6 -> 4 mm:
                                       params={"std": 0.004})                       # the springy sag is character
