@@ -252,7 +252,10 @@ def main():
         """Eén stap van 20 ms: ESP -> toestandsmachine -> houding -> netwerk/kinematisch."""
         cam_pos, cam_R = camera()
         p = esp(ball, cam_pos, cam_R)
-        p["gyro_z"] = np.array([float(robot.d.qvel[5])])   # 2026-11-01: gemeten draai (IMU) voor het geheugen
+        p["gyro_z"] = np.array([float(robot.d.qvel[5])])
+        # 2026-11-01: bij zitten/opstaan de kop recht (800 viel om: ging zitten met de kop 63 gr opzij)
+        wissel = st["posture"] in ("GAAT ZITTEN", "STAAT OP") or (st["posture"] == "STAAT" and int(beh.state[0]) == B.REST)
+        p["center_head"] = np.array([1.0 if wissel else 0.0])   # 2026-11-01: gemeten draai (IMU) voor het geheugen
         v100 = np.array([grids[keys["style"]].v100])
         vx, wz, head, fix = beh.step(p, DT, v100)
         # 2026-11-01: zittend stuurt de toestandsmachine de kop direct (netwerk uit) -> vol bereik;
@@ -266,7 +269,7 @@ def main():
         state = int(beh.state[0])
         # houding: RUST = zitten; uit RUST eerst opstaan (netwerk uit, commando 0)
         want_sit = state == B.REST
-        if st["posture"] == "STAAT" and want_sit and st["rest_b"] <= 0.0:
+        if st["posture"] == "STAAT" and want_sit and st["rest_b"] <= 0.0 and abs(head[2]) < 0.15 and abs(head[1] - head[0]) < 0.15:
             st.update(posture="GAAT ZITTEN", t_post=0.0)
         elif st["posture"] == "ZIT" and not want_sit:
             st.update(posture="STAAT OP", t_post=0.0)

@@ -98,6 +98,9 @@ LOOK_STEP = 0.45          # rad: nieuw rondkijkpunt minstens 26 gr van het vorig
 GL_EVERY, GL_T = 5.0, 0.7          # bekijkt hij iets stils: gemiddeld om de 5 s even weg- en terugkijken
 PURSUIT_FLOW = 0.15       # 2026-11-01 (Jairo: kop strakker): punt beweegt (rad/s) -> kop volgt continu
 UP_DELAY = 1.2            # s na opstaan (opstaan 0.8 + netwerk invaden) eerst stil staan voor hij draait/loopt (250 viel om bij meteen draaien)
+HEAD_YAW_WALK = 0.45      # 2026-11-01: kop max 26 gr opzij tijdens lopen/draaien (run 800: kop +40 gr
+                          # -> lijf draait 25-60 gr/s de ANDERE kant op, ook als het commando goed is:
+                          # de 52 g kop verschuift het zwaartepunt). Het lijf draait, de kop leidt een beetje.
 MEM_T = 20.0              # 2026-11-01 (Jairo): onthoudt ~20 s aan welke kant de bal uit beeld ging
 MEM_P = 0.85              # ... en kiest dan zoveel vaker een kijkpunt aan die kant (neemt af met de tijd)
 REST_LOOK_LAST = 2.0      # s: zittend kwijt -> eerst nakijken waar hij heen ging
@@ -419,10 +422,20 @@ class Behavior:
         goal_elev = (where(ant, self.ant_elev, self.g_elev) + adem
                      + SRP_ELEV * self.srp_a * env_up)
         goal_elev = clip(goal_elev, HEAD_ELEV_MIN, HEAD_ELEV_MAX)
+        loco = (S == APPROACH) | (S == FOLLOW) | (S == BACKOFF) | (S == SEARCH) | turn
+        ylim = where(loco, u * 0 + HEAD_YAW_WALK, u * 0 + HEAD_YAW_MAX)
+        goal_yaw = clip(goal_yaw, -ylim, ylim)
+        # zitten <-> staan (de robot/player zegt het): kop recht, anders valt hij om met de kop opzij
+        if "center_head" in p:
+            c = p["center_head"] > 0.5
+            goal_yaw = where(c, goal_yaw * 0, goal_yaw)
+            goal_elev = where(c, goal_elev * 0, goal_elev)
         goal_roll = (where(rondkijk, self.lk_roll, self.lk_roll * 0)
                      + SRP_TILT * self.srp_a * self.srp_side * env_tilt
                      + HM_TILT * self.hm_side * env_hm)
         goal_roll = clip(goal_roll, -0.24, 0.24)          # kop-roll max 15 gr
+        if "center_head" in p:
+            goal_roll = where(p["center_head"] > 0.5, goal_roll * 0, goal_roll)
 
         # ondergedempte veer = slow in, doorschieten en terugveren (follow-through)
         vmax = where(urgent | lost_recent | (self.dbl_t < DBL_T2 + 0.4) | (self.srp_t < 0.15),
