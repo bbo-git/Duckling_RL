@@ -1012,6 +1012,7 @@ class FilteredJointPositionAction(_JPA):
         super().__init__(cfg, env)
         self._filt = self._entity.data.default_joint_pos[:, self._target_ids].clone()
         self._prev = self._filt.clone()
+        self._prev2 = self._filt.clone()
         self._est = self._filt.clone()
         self._est_prev = self._filt.clone()
         self._vmax = torch.tensor([_est_vmax(n) for n in self._target_names], device=self.device)
@@ -1022,6 +1023,7 @@ class FilteredJointPositionAction(_JPA):
 
     def process_actions(self, actions):
         super().process_actions(actions)
+        self._prev2 = self._prev.clone()
         self._prev = self._filt.clone()
         self._filt = self._filt + self._alpha * (self._processed_actions - self._filt)
         self._processed_actions = self._filt.clone()
@@ -1037,6 +1039,7 @@ class FilteredJointPositionAction(_JPA):
             env_ids = slice(None)
         self._filt[env_ids] = q[env_ids]
         self._prev[env_ids] = q[env_ids]
+        self._prev2[env_ids] = q[env_ids]
         self._est[env_ids] = q[env_ids]
         self._est_prev[env_ids] = q[env_ids]
 
@@ -1057,6 +1060,14 @@ def target_rate(env, action_name: str = "joint_pos") -> torch.Tensor:
     Jouw loopje: ~0.02 per stap; aan/uit-sturing: ~4."""
     t = env.action_manager.get_term(action_name)
     return torch.square(t._filt - t._prev).sum(-1)
+
+
+def target_jerk(env, action_name: str = "joint_pos") -> torch.Tensor:
+    """2026-11-01 (Jairo: trillen dat de servo's nooit halen): tweede verschil van de servodoelen,
+    som (d_t - 2 d_t-1 + d_t-2)^2, rad^2. Raakt alleen snel heen-en-weer (12-25 Hz), niet het loopje:
+    jouw loopje 0.005-0.011 per stap (1-1.6 gr RMS), run 450: 1.16 (16 gr RMS)."""
+    t = env.action_manager.get_term(action_name)
+    return torch.square(t._filt - 2 * t._prev + t._prev2).sum(-1)
 
 
 def head_target_rate(env, action_name: str = "joint_pos") -> torch.Tensor:
@@ -1453,7 +1464,8 @@ def make_duckling_velocity_env_cfg(play: bool = False, rough: bool = False) -> M
     cfg.actions["joint_pos"] = FilteredJointPositionActionCfg(
         **{f: getattr(act_cfg, f) for f in act_cfg.__dataclass_fields__})
     cfg.rewards["target_rate"] = RewardTermCfg(func=target_rate, weight=-2.0)
-    cfg.rewards["head_target_rate"] = RewardTermCfg(func=head_target_rate, weight=-6.0)   # 2026-10-31: kop rustiger
+    cfg.rewards["head_target_rate"] = RewardTermCfg(func=head_target_rate, weight=-6.0)
+    cfg.rewards["target_jerk"] = RewardTermCfg(func=target_jerk, weight=-1.0)   # 2026-11-01   # 2026-10-31: kop rustiger
     # 2026-11-01: trunk_roll_rate (-0.3) eruit: 300 kon zijn voet niet meer optillen (10 pasjes/s van 2 mm):
     # zonder enkel-roll moet de romp waggelen om het gewicht te verplaatsen. Nu: waggelen zoals jouw loopje.
     cfg.rewards["trunk_waddle"] = RewardTermCfg(func=trunk_waddle, weight=2.0)

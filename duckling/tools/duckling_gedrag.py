@@ -310,18 +310,26 @@ def main():
             st["pos"] += np.array([c * twist[0], s * twist[0]]) * DT
             st["yaw"] += twist[2] * DT
         st["t"] += DT
+        # 2026-11-01: trillen van de servodoelen (tweede verschil, gr RMS, glijdend gemiddelde ~1 s)
+        f = getattr(robot, "filt", None)
+        if f is not None and standing:
+            h = st.setdefault("hist", [f.copy(), f.copy()])
+            j = np.degrees(f - 2 * h[-1] + h[-2])
+            st["tril"] = 0.95 * st.get("tril", 0.0) + 0.05 * float(np.sqrt(np.mean(j ** 2)))
+            h.append(f.copy()); del h[0]
         return p, state, twist, head, bool(fix[0])
 
     def hud(p, state, twist, head, fix):
         left = ("toestand\nhouding\nstijl\nESP: zichtbaar\nrichting / afstand\ngrootte / intensiteit\n"
-                "eigen beweging / nadering\nnetwerk: vx / wz\nkop yaw / elevatie\n\ntoetsen\n")
+                "eigen beweging / nadering\nnetwerk: vx / wz\nkop yaw / elevatie\ntrillen servodoelen\n\ntoetsen\n")
         right = (f"{B.STATE_NAMES[state]}\n{st['posture']}  (netwerk {st['rest_b']:.0%})\n{P.STYLES[keys['style']][0]}\n"
                  f"{'ja' if p['vis'][0] > 0.5 else 'NEE'}{' (uit beeld)' if esp.absent else ''}\n"
                  f"{math.degrees(p['bx'][0]):+.0f} gr / {p['dist'][0] * 100:.0f} cm\n"
                  f"{int(esp.msize)} (camera ziet {int(getattr(esp, 'msize_seen', 0))}) / {int(esp.mint)}\n"
                  f"{p['tflow'][0] * p['dist'][0] * 100:+.1f} cm/s / {p['approach'][0] * 100:+.1f} cm/s\n"
                  f"{twist[0] * 100:+.1f} cm/s / {math.degrees(twist[2]):+.0f} gr/s\n"
-                 f"{math.degrees(head[2]):+.0f} / {math.degrees(head[1] - head[0]):+.0f} gr{'  (fixeert)' if fix else ''}\n\n"
+                 f"{math.degrees(head[2]):+.0f} / {math.degrees(head[1] - head[0]):+.0f} gr{'  (fixeert)' if fix else ''}\n"
+                 f"{st.get('tril', 0.0):.1f} gr  (jouw loopje 1-1.6, run 450 ~16)\n\n"
                  "bal: pijltoetsen, End, Home\nschuifjes: intensiteit, grootte, wandel, stijl, uit_beeld")
         return left, right
 
