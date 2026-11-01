@@ -479,6 +479,7 @@ class _GridReference:
         jp = stack("joint_pos", (len(names),))
         self.q = f(jp[..., cols])                                           # (nStyle*G, T, 10)
         self.h = f(stack("root_height", ()))                                # (nStyle*G, T)
+        self.rq = f(stack("root_quat_local", (4,)))                         # (nStyle*G, T, 4) romp-orientatie
         self.c = f(stack("contact", (2,)))                                  # (nStyle*G, T, 2)
         self.head = f(jp[..., hcols])                                       # (nStyle*G, T, 4)
         self.length = torch.tensor(np.concatenate([np.asarray(g["length"]).reshape(-1) for g in grids]),
@@ -488,6 +489,7 @@ class _GridReference:
         self.stand_q = f(np.asarray(d["stand_joint_pos"])[cols])
         self.stand_head = f(np.asarray(d["stand_joint_pos"])[hcols])
         self.stand_h = float(d["stand_root_height"])
+        self.stand_rq = f(np.asarray(d["stand_root_quat_local"]))
         self.v100_s = f([float(g["v100"]) for g in grids])                 # per stijl
         i100 = (int(np.argmin(np.abs(np.asarray(d["speeds"]) - 1.0))) * nW
                 + int(np.argmin(np.abs(np.asarray(d["turns"])))) ) * nY + int(np.argmin(np.abs(np.asarray(d["sides"]))))
@@ -556,6 +558,17 @@ class _GridReference:
     def height_now(self, env):
         self._update(env)
         return self.walk * self._sample(self.h, self.phase) + (1 - self.walk) * self.stand_h
+
+    def trunk_rp_now(self, env):
+        """2026-11-01: romp roll en pitch (rad) van jouw loopje (het waggelen), gemengd met stilstaan."""
+        self._update(env)
+        def rp(q):
+            w, x, y, z = q[..., 0], q[..., 1], q[..., 2], q[..., 3]
+            return (torch.atan2(2 * (w * x + y * z), 1 - 2 * (x * x + y * y)),
+                    torch.asin(torch.clamp(2 * (w * y - z * x), -1.0, 1.0)))
+        r1, p1 = rp(self._sample(self.rq, self.phase))
+        r0, p0 = rp(self.stand_rq)
+        return self.walk * r1 + (1 - self.walk) * r0, self.walk * p1 + (1 - self.walk) * p0
 
     def head_offset_now(self, env):
         """Rhythmic head motion of your walk (nod, sway, follow-through) relative to the
@@ -1050,9 +1063,23 @@ def head_target_rate(env, action_name: str = "joint_pos") -> torch.Tensor:
 
 
 def trunk_roll_rate(env) -> torch.Tensor:
-    """2026-10-31: zijwaarts schommelen van de romp: (hoeksnelheid om de lengte-as)^2, romp-assen."""
+    """2026-10-31: zijwaarts schommelen van de romp: (hoeksnelheid om de lengte-as)^2, romp-assen.
+    2026-11-01: NIET meer gebruikt (blokkeerde het optillen van de voet; zie trunk_waddle)."""
     w = env.scene["robot"].data.root_link_ang_vel_b
     return torch.square(w[:, 0])
+
+
+def trunk_waddle(env, std: float = 0.1, std_fine: float = 0.03, command_name: str = "twist") -> torch.Tensor:
+    """2026-11-01: romp-roll en -pitch volgen jouw loopje (waggelen ~+-3 gr). Zo verplaatst hij zijn
+    gewicht naar de standvoet zoals in de animatie, en kan de andere voet omhoog. Twee schalen."""
+    rr, pr = _ref(env).trunk_rp_now(env)
+    q = env.scene["robot"].data.root_link_quat_w
+    w, x, y, z = q[:, 0], q[:, 1], q[:, 2], q[:, 3]
+    roll = torch.atan2(2 * (w * x + y * z), 1 - 2 * (x * x + y * y))
+    pitch = torch.asin(torch.clamp(2 * (w * y - z * x), -1.0, 1.0))
+    e = torch.square(roll - rr) + torch.square(pitch - pr)
+    r = 0.5 * torch.exp(-e / std ** 2) + 0.5 * torch.exp(-e / std_fine ** 2)
+    return r * _moving(env, command_name).float()
 
 
 class feet_parallel:
@@ -1420,7 +1447,9 @@ def make_duckling_velocity_env_cfg(play: bool = False, rough: bool = False) -> M
         **{f: getattr(act_cfg, f) for f in act_cfg.__dataclass_fields__})
     cfg.rewards["target_rate"] = RewardTermCfg(func=target_rate, weight=-2.0)
     cfg.rewards["head_target_rate"] = RewardTermCfg(func=head_target_rate, weight=-6.0)   # 2026-10-31: kop rustiger
-    cfg.rewards["trunk_roll_rate"] = RewardTermCfg(func=trunk_roll_rate, weight=-0.3)   # 2026-10-31: niet zijwaarts zwaaien
+    # 2026-11-01: trunk_roll_rate (-0.3) eruit: 300 kon zijn voet niet meer optillen (10 pasjes/s van 2 mm):
+    # zonder enkel-roll moet de romp waggelen om het gewicht te verplaatsen. Nu: waggelen zoals jouw loopje.
+    cfg.rewards["trunk_waddle"] = RewardTermCfg(func=trunk_waddle, weight=2.0)
     # 2026-10-31: actor ziet de GESCHATTE gewrichtsstand (zoals op de robot), de critic de echte
     from mjlab.utils.noise import UniformNoiseCfg as _Un
     cfg.observations["actor"].terms["joint_pos"] = ObservationTermCfg(

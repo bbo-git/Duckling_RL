@@ -79,6 +79,9 @@ EDGE_TURN = 0.9           # rad (52 gr): zit hij en staat de actie verder opzij 
 EDGE_FRAC = 0.6           # 2026-10-31: punt verder dan 60 % van de halve beeldhoek (18 gr) = rand -> meteen kijken
 SACCADE_FAST = 6.0        # rad/s: snelle kopdraai als het punt uit beeld dreigt te gaan / net kwijt is
 SEARCH_LOOK_LAST = 1.5    # s: bij kwijt eerst naar de laatste plek kijken
+LOOK_T_MIN, LOOK_T_MAX = 0.8, 3.5   # 2026-11-01: s tussen twee kijkpunten bij rondkijken
+LOOK_UP_P, LOOK_UP_MIN = 0.3, 0.25  # kans op omhoog kijken, en minimaal hoeveel (rad)
+LOOK_TILT_P, LOOK_TILT = 0.4, 0.15  # kans op een scheef kopje, en max kanteling (rad, kop-roll)
 LOOK_AMP = 1.0            # rad: rondkijken in rust/zoeken (2026-10-29: 0.6 -> 1.0, zag niets opzij)
 
 
@@ -118,6 +121,11 @@ def copy(x):
     return x.clone() if _t(x) else x.copy()
 
 
+def rand_like(x):
+    """uniform 0..1, zelfde vorm/type als x (torch of numpy)"""
+    return torch.rand_like(x) if _t(x) else np.random.random(np.shape(x))
+
+
 def zeros_like(x):
     return torch.zeros_like(x) if _t(x) else np.zeros_like(x)
 
@@ -138,7 +146,8 @@ class Behavior:
         self.state = copy(z) + REST       # float voor torch/numpy-gemak
         for k in ("t_state", "t_idle", "t_lost", "t_move", "t_still", "t_dance", "t_nodance",
                   "last_b", "last_d", "last_e", "vx", "wz", "h_yaw", "h_elev", "g_yaw", "g_elev",
-                  "t_fix", "orbit_side", "t_look", "d_f"):
+                  "t_fix", "orbit_side", "t_look", "d_f",
+                  "lk_t", "lk_yaw", "lk_elev", "lk_roll", "h_roll"):
             setattr(self, k, copy(z))
         self.last_d = self.last_d + FOLLOW_DIST
         self.d_f = self.d_f + FOLLOW_DIST
@@ -146,7 +155,7 @@ class Behavior:
     def reset(self, ids, state=REST):
         for k in ("t_state", "t_idle", "t_lost", "t_move", "t_still", "t_dance", "t_nodance",
                   "last_b", "last_e", "vx", "wz", "h_yaw", "h_elev", "g_yaw", "g_elev", "t_fix",
-                  "orbit_side", "t_look"):
+                  "orbit_side", "t_look", "lk_t", "lk_yaw", "lk_elev", "lk_roll", "h_roll"):
             getattr(self, k)[ids] = 0.0
         self.last_d[ids] = FOLLOW_DIST
         self.d_f[ids] = FOLLOW_DIST
@@ -267,13 +276,28 @@ class Behavior:
 
         # --- kop: vogel - fixeren, dan saccade
         self.t_look = self.t_look + dt
-        look = LOOK_AMP * (0.6 * sin(0.55 * self.t_look) + 0.4 * sin(1.3 * self.t_look + 1.7))
+        # 2026-11-01: rondkijken als een vogel i.p.v. een sinus: om de 0.8-3.5 s een nieuw willekeurig
+        # punt, soms omhoog (30 %), soms met een nieuwsgierig scheef kopje (40 %)
+        self.lk_t = self.lk_t - dt
+        nieuw = self.lk_t <= 0
+        u = rand_like(self.lk_t)
+        self.lk_t = where(nieuw, LOOK_T_MIN + (LOOK_T_MAX - LOOK_T_MIN) * rand_like(self.lk_t), self.lk_t)
+        self.lk_yaw = where(nieuw, LOOK_AMP * (2 * rand_like(u) - 1), self.lk_yaw)
+        omhoog = rand_like(u) < LOOK_UP_P
+        elev = where(omhoog, LOOK_UP_MIN + (HEAD_ELEV_MAX - LOOK_UP_MIN) * rand_like(u), -0.1 + 0.25 * rand_like(u))
+        self.lk_elev = where(nieuw, elev, self.lk_elev)
+        scheef = rand_like(u) < LOOK_TILT_P
+        tilt = (2 * rand_like(u) - 1) * LOOK_TILT
+        self.lk_roll = where(nieuw, where(scheef, tilt, tilt * 0), self.lk_roll)
+        look = self.lk_yaw
         # ZOEKEN: eerst kijken waar hij het laatst was (1.5 s), dan pas rondkijken
         lost_recent = (S == SEARCH) & (self.t_state < SEARCH_LOOK_LAST)
         tgt_yaw = where(vis, b, where(lost_recent, self.last_b,
                                       where((S == REST) | (S == SEARCH), look, self.g_yaw)))
         tgt_yaw = clip(tgt_yaw, -HEAD_YAW_MAX, HEAD_YAW_MAX)
-        tgt_elev = where(vis, clip(self.last_e, HEAD_ELEV_MIN, HEAD_ELEV_MAX), self.g_elev * 0.98)
+        rondkijk = ~vis & ((S == REST) | ((S == SEARCH) & ~lost_recent))
+        tgt_elev = where(vis, clip(self.last_e, HEAD_ELEV_MIN, HEAD_ELEV_MAX),
+                         where(rondkijk, self.lk_elev, self.g_elev * 0.98))
         self.t_fix = self.t_fix + dt
         # 2026-10-31: punt aan de rand van het beeld -> meteen (niet wachten op FIX_MIN) en snel kijken
         urgent = vis & (absv(p["bx"]) > EDGE_FRAC * FOV_H)
@@ -287,7 +311,11 @@ class Behavior:
         self.h_elev = self.h_elev + clip(self.g_elev - self.h_elev, -r, r)
         fix = (((self.g_yaw - self.h_yaw) ** 2 + (self.g_elev - self.h_elev) ** 2) < 1e-4)
         # nek omlaag (-) en kop omhoog (+) geven samen elevatie: elk de helft
-        head = (-0.5 * self.h_elev, 0.5 * self.h_elev, self.h_yaw, zeros_like(self.h_yaw))
+        # scheef kopje alleen bij rondkijken; anders langzaam terug naar recht
+        tgt_roll = where(rondkijk, self.lk_roll, self.lk_roll * 0)
+        rr = 1.0 * dt
+        self.h_roll = self.h_roll + clip(tgt_roll - self.h_roll, -rr, rr)
+        head = (-0.5 * self.h_elev, 0.5 * self.h_elev, self.h_yaw, self.h_roll)
         head = torch.stack(head, -1) if _t(self.h_yaw) else np.stack(head, -1)
         return self.vx, self.wz, head, fix
 
