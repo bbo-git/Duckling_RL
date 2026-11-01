@@ -252,6 +252,7 @@ def main():
         """Eén stap van 20 ms: ESP -> toestandsmachine -> houding -> netwerk/kinematisch."""
         cam_pos, cam_R = camera()
         p = esp(ball, cam_pos, cam_R)
+        p["gyro_z"] = np.array([float(robot.d.qvel[5])])   # 2026-11-01: gemeten draai (IMU) voor het geheugen
         v100 = np.array([grids[keys["style"]].v100])
         vx, wz, head, fix = beh.step(p, DT, v100)
         # 2026-11-01: zittend stuurt de toestandsmachine de kop direct (netwerk uit) -> vol bereik;

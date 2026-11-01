@@ -288,6 +288,7 @@ class BehaviorVelocityCommand(StyleVelocityCommand):
             self._place[ids] = False
         cam_pos, R = self._camera()
         p = self.person.step(dt, self.robot.data.root_link_pos_w[:, :2], self.robot.data.heading_w, cam_pos, R)
+        p["gyro_z"] = self.robot.data.root_link_ang_vel_b[:, 2]   # 2026-11-01: gemeten draai (IMU) voor het geheugen
         vx, wz, head, _ = self.behavior.step(p, dt, self._v100[self.style])
         b = self.is_beh
         self.vel_command_b[b, 0] = vx[b]

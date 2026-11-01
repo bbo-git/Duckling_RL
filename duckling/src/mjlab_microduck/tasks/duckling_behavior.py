@@ -84,6 +84,8 @@ LOOK_T_MIN, LOOK_T_MAX = 0.8, 3.5   # 2026-11-01: s tussen twee kijkpunten bij r
 LOOK_UP_P, LOOK_UP_MIN = 0.3, 0.25  # kans op omhoog kijken, en minimaal hoeveel (rad)
 LOOK_TILT_P, LOOK_TILT = 0.5, 0.22  # kans op een scheef kopje, en max kanteling (rad, kop-roll)
 HEAD_W, HEAD_ZETA = 14.0, 0.55     # 2026-11-01 Pixar: veer (rad/s) en demping -> ~12 % doorschieten
+ZETA_LOOK, VMAX_LOOK = 0.32, 5.0    # 2026-11-01 (Jairo): rondkijken meer follow-through (~30 % doorschieten)
+ZETA_TRACK = 0.75                   # ... maar de bal volgen strak (~3 %)
 ANT_MIN, ANT_FRAC, ANT_MAX, ANT_T = 0.35, 0.10, 0.07, 0.12   # anticipation: vanaf 20 gr, 10 % terug (max 4 gr), 0.12 s
 BREATH = 0.04             # rad: ademen (nooit dood stil) - 0.012 was onzichtbaar
 APPEAR_GAP = 1.0          # s niets gezien en dan iets: verrast
@@ -94,6 +96,8 @@ DBL_P, DBL_SIDE, DBL_T1, DBL_T2 = 0.5, 0.5, 0.35, 0.65   # dubbele blik: kans, v
 HM_EVERY, HM_TILT = 3.0, 0.2       # "hm?": om de ~4 s een scheef kopje als hij iets stils bekijkt
 LOOK_STEP = 0.45          # rad: nieuw rondkijkpunt minstens 26 gr van het vorige (anders zie je niks)
 GL_EVERY, GL_T = 5.0, 0.7          # bekijkt hij iets stils: gemiddeld om de 5 s even weg- en terugkijken
+PURSUIT_FLOW = 0.15       # 2026-11-01 (Jairo: kop strakker): punt beweegt (rad/s) -> kop volgt continu
+UP_DELAY = 1.2            # s na opstaan (opstaan 0.8 + netwerk invaden) eerst stil staan voor hij draait/loopt (250 viel om bij meteen draaien)
 MEM_T = 20.0              # 2026-11-01 (Jairo): onthoudt ~20 s aan welke kant de bal uit beeld ging
 MEM_P = 0.85              # ... en kiest dan zoveel vaker een kijkpunt aan die kant (neemt af met de tijd)
 REST_LOOK_LAST = 2.0      # s: zittend kwijt -> eerst nakijken waar hij heen ging
@@ -167,7 +171,7 @@ class Behavior:
                   "v_yaw", "v_elev", "v_roll", "ant_t", "ant_yaw", "ant_elev", "srp_a", "srp_side",
                   "dbl_yaw", "hm_side", "mint_prev", "gl_off", "ex_side"):
             setattr(self, k, copy(z))
-        for k in ("srp_t", "dbl_t", "hm_t", "t_lost_prev", "gl_t"):
+        for k in ("srp_t", "dbl_t", "hm_t", "t_lost_prev", "gl_t", "t_up"):
             setattr(self, k, copy(z) + 99.0)
         self.last_d = self.last_d + FOLLOW_DIST
         self.d_f = self.d_f + FOLLOW_DIST
@@ -179,7 +183,7 @@ class Behavior:
                   "v_yaw", "v_elev", "v_roll", "ant_t", "ant_yaw", "ant_elev", "srp_a", "srp_side",
                   "dbl_yaw", "hm_side", "mint_prev", "gl_off", "ex_side"):
             getattr(self, k)[ids] = 0.0
-        for k in ("srp_t", "dbl_t", "hm_t", "t_lost_prev", "gl_t"):
+        for k in ("srp_t", "dbl_t", "hm_t", "t_lost_prev", "gl_t", "t_up"):
             getattr(self, k)[ids] = 99.0
         self.last_d[ids] = FOLLOW_DIST
         self.d_f[ids] = FOLLOW_DIST
@@ -198,8 +202,11 @@ class Behavior:
         b = p["bx"] + self.h_yaw
         e = p["by"] + self.h_elev
         d = p["dist"]
-        # geheugen; buiten beeld: richting bijwerken met de eigen draai (dead reckoning)
-        self.last_b = where(vis, b, self.last_b - self.wz * dt)
+        # geheugen; buiten beeld: richting bijwerken met de eigen draai (dead reckoning).
+        # 2026-11-01: met de GEMETEN draai (gyro) als die er is - het gevraagde draaien haalde hij niet,
+        # dan liep het geheugen weg ("vergeet de richting")
+        gz = p["gyro_z"] if "gyro_z" in p else self.wz
+        self.last_b = where(vis, b, self.last_b - gz * dt)
         self.last_d = where(vis, d, self.last_d)
         self.last_e = where(vis, e, self.last_e)
         self.t_lost = where(vis, self.t_lost * 0, self.t_lost + dt)
@@ -296,6 +303,11 @@ class Behavior:
         wz = where(turn, w_face, wz)
         wz = clip(wz, -W_MAX, W_MAX)
         # geleidelijk
+        # na opstaan eerst even stil (anders draait hij terwijl hij nog niet stevig staat)
+        self.t_up = where(S == REST, self.t_up * 0, self.t_up + dt)
+        mag = self.t_up > UP_DELAY
+        vx = where(mag, vx, vx * 0)
+        wz = where(mag, wz, wz * 0)
         self.vx = self.vx + clip(vx - self.vx, -ACC_V * dt, ACC_V * dt)
         self.wz = self.wz + clip(wz - self.wz, -ACC_W * dt, ACC_W * dt)
         stop = (S == REST) | ((S == WATCH) & ~turn)
@@ -389,7 +401,8 @@ class Behavior:
         self.t_fix = self.t_fix + dt
         urgent = vis & (absv(p["bx"]) > EDGE_FRAC * FOV_H)
         dy, de = tgt_yaw - self.g_yaw, tgt_elev - self.g_elev
-        jump = ((((dy ** 2 + de ** 2) > SACCADE_THR ** 2) & ((self.t_fix > FIX_MIN) | urgent)) | in_dbl
+        pursuit = vis & (absv(p["tflow"]) > PURSUIT_FLOW) & ~in_gl
+        jump = ((((dy ** 2 + de ** 2) > SACCADE_THR ** 2) & ((self.t_fix > FIX_MIN) | urgent)) | in_dbl | pursuit
                 | (self.gl_t < GL_T + 0.6) | lost_recent) | (start_srp & (dy ** 2 > 0.03 ** 2))
         # anticipation: bij een grote kijkwissel eerst even een klein beetje de andere kant op
         groot = jump & ((dy ** 2 + de ** 2) > ANT_MIN ** 2) & ~urgent & ~lost_recent & ~in_dbl
@@ -414,7 +427,9 @@ class Behavior:
         # ondergedempte veer = slow in, doorschieten en terugveren (follow-through)
         vmax = where(urgent | lost_recent | (self.dbl_t < DBL_T2 + 0.4) | (self.srp_t < 0.15),
                      SACCADE_FAST + u * 0, SACCADE_RATE + u * 0)
-        w2, c = HEAD_W ** 2, 2 * HEAD_ZETA * HEAD_W
+        zeta = where(rondkijk, u * 0 + ZETA_LOOK, where(vis & ~in_gl, u * 0 + ZETA_TRACK, u * 0 + HEAD_ZETA))
+        vmax = where(rondkijk, VMAX_LOOK + u * 0, vmax)
+        w2, c = HEAD_W ** 2, 2 * zeta * HEAD_W
         self.v_yaw = clip(self.v_yaw + (w2 * (goal_yaw - self.h_yaw) - c * self.v_yaw) * dt, -vmax, vmax)
         self.v_elev = clip(self.v_elev + (w2 * (goal_elev - self.h_elev) - c * self.v_elev) * dt, -vmax, vmax)
         self.v_roll = clip(self.v_roll + (w2 * (goal_roll - self.h_roll) - c * self.v_roll) * dt, -2.0, 2.0)
