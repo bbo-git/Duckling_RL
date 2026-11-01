@@ -155,7 +155,10 @@ JOINT_TARGET_RANGE_DEG = {
 # jouw loopje, knie maar ~45 % en enkel ~65 % van de uitslag.
 # 2026-11-01 (Jairo: "werk maken van pitch in heup en enkel"): run 300 schuifelde met heup-pitch/enkel
 # ~vast; dat kostte maar 1/9 van de imitatiefout. hip_pitch 1 -> 3, ankle 1 -> 2.
-IMITATION_JOINT_WEIGHT = {"hip_yaw": 1.0, "hip_roll": 3.0, "hip_pitch": 3.0, "knee": 2.0, "ankle": 2.0}
+# 2026-11-01 (1750): hip_yaw 1 -> 3. Na 950 zakten de tenen naar binnen (heup-yaw -13 gr vast, X-poten) en
+# draaide hij niet meer (0.5 rad/s gevraagd, ~0.1 gekregen). Jouw loopje draait met de heup-yaw van het
+# zwaaibeen (+-4 gr bij 30 gr/s, +-13 gr bij 90 gr/s): dat patroon nu even zwaar als heup-pitch.
+IMITATION_JOINT_WEIGHT = {"hip_yaw": 3.0, "hip_roll": 3.0, "hip_pitch": 3.0, "knee": 2.0, "ankle": 2.0}
 
 
 _STYLE_CACHE = {}
@@ -1536,7 +1539,7 @@ def make_duckling_velocity_env_cfg(play: bool = False, rough: bool = False) -> M
         # (was 1000/1500/2000 -> 35/65/100 %); het lopen staat bij 500 al
         {"step": 600 * 24, "ranges": _head_stage(0.35)},
         {"step": 800 * 24, "ranges": _head_stage(0.65)},
-        {"step": 1000 * 24, "ranges": _head_stage(1.0)},
+        {"step": 1300 * 24, "ranges": _head_stage(1.0)},   # 2026-11-01: 1000 -> 1300 (na 1000 ging het mis)
     ]
 
     # --- CoM randomization scaled to the smaller support polygon

@@ -8,7 +8,8 @@
 #   ./duck.sh check              reward-volgorde per stijl (eigen loopje moet winnen; V2)
 #   DUCK_TASK=volgen ./duck.sh resume 1000   volgen als fine-tune na lopen (standaard DUCK_TASK=lopen)
 #   ./duck.sh train [iters]      generate model, check it, (re)start training + tensorboard
-#   ./duck.sh resume [iters]     continue the newest run from its last checkpoint
+#   ./duck.sh resume [iters] [ckpt]   continue the newest run from its last checkpoint
+#                                (of vanaf model_<ckpt>.pt, bv. ./duck.sh resume 3000 950)
 #   ./duck.sh status             progress and the main numbers
 #   ./duck.sh export [iter]      checkpoint (newest, or model_<iter>) -> /workspace/duckling_<mode>_<iter>.onnx
 #   ./duck.sh export [iter] --push   idem + in onnx/ van de git-repo committen en pushen
@@ -199,7 +200,11 @@ EOF
     need_uv
     iters="${2:-1500}"
     run=$(newest_ckpt_run); [ -n "$run" ] || die "geen run met een checkpoint gevonden in $RUNS"
-    ck=$(newest_ckpt "$run"); [ -n "$ck" ] || die "geen checkpoint in $run"
+    if [ -n "${3:-}" ]; then
+      ck="$RUNS/$run/model_$3.pt"; [ -f "$ck" ] || die "geen $ck"
+    else
+      ck=$(newest_ckpt "$run"); [ -n "$ck" ] || die "geen checkpoint in $run"
+    fi
     stop_training
     say "hervatten: $run / $(basename "$ck")"
     launch "--agent.max-iterations $iters --agent.resume True --agent.load-run $run --agent.load-checkpoint $(basename "$ck")"

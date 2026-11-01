@@ -162,7 +162,7 @@ def main():
         mm = re.search(r"_(\d+)\.onnx$", a.onnx)
         if mm:
             it = int(mm.group(1))
-            frac = 1.0 if it >= 1000 else 0.65 if it >= 800 else 0.35 if it >= 600 else 0.15 if it >= 500 else 0.05   # 2026-11-01
+            frac = 1.0 if it >= 1300 else 0.65 if it >= 800 else 0.35 if it >= 600 else 0.15 if it >= 500 else 0.05   # 2026-11-01
             head_lim = HEAD_LIMITS * frac
             print(f"kopbereik {frac:.0%} (zoals in de training op iteratie {it}; --kop-vol = alles)")
     if pol is not None:
