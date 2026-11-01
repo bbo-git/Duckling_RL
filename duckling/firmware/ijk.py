@@ -66,7 +66,7 @@ DIFFS = {   # naam: (servo A, servo B)
 JOINTS = {
     "L_heup_pitch": ("diff", "L_heup", "p", (-60, 60)), "L_heup_roll": ("diff", "L_heup", "r", (-20, 20)),
     "R_heup_pitch": ("diff", "R_heup", "p", (-60, 60)), "R_heup_roll": ("diff", "R_heup", "r", (-20, 20)),
-    "kop_yaw": ("diff", "kop", "p", (-90, 90)), "kop_roll": ("diff", "kop", "r", (-20, 20)),
+    "kop_yaw": ("diff", "kop", "p", (-90, 90)), "kop_roll": ("diff", "kop", "r", (-15, 15)),
     "L_heup_yaw": ("enkel", "L_yaw", (-20, 20)), "R_heup_yaw": ("enkel", "R_yaw", (-20, 20)),
     "L_knie": ("enkel", "L_knie", (-50, 90)), "R_knie": ("enkel", "R_knie", (-50, 90)),
     "L_enkel": ("enkel", "L_enkel", (-60, 90)), "R_enkel": ("enkel", "R_enkel", (-60, 90)),

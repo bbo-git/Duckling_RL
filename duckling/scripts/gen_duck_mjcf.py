@@ -100,7 +100,7 @@ RANGE_DEG = {
     "left_ankle_pitch": (-50, 90), "right_ankle_pitch": (-50, 90),
     "left_toe_pitch": (-60, 90), "right_toe_pitch": (-60, 90),
     "neck_pitch": (-30, 30), "head_pitch": (-30, 30),
-    "head_roll": (-20, 20), "head_yaw": (-90, 90), "jaw_pitch": (0, 30),
+    "head_roll": (-15, 15), "head_yaw": (-90, 90), "jaw_pitch": (0, 30),
 }
 
 # Actuatoren. Differentielen worden aangestuurd via twee motoren op fixed tendons:

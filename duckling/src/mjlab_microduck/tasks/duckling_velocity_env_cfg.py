@@ -135,7 +135,7 @@ JOINT_TARGET_RANGE_DEG = {
     r"^(left|right)_hip_yaw$": (-20, 20), r"^(left|right)_hip_roll$": (-20, 20),
     r"^(left|right)_hip_pitch$": (-60, 60), r"^(left|right)_knee$": (-50, 90),
     r"^(left|right)_ankle$": (-60, 90), r"^neck_pitch$": (-30, 30), r"^head_pitch$": (-30, 30),
-    r"^head_roll$": (-20, 20), r"^head_yaw$": (-90, 90),
+    r"^head_roll$": (-15, 15), r"^head_yaw$": (-90, 90),
 }
 # Per-joint weight in the imitation error. The walk cycle is a style guide for the
 # fore-aft leg motion (hip pitch, knee, ankle). Hip roll/yaw are left mostly free: the
