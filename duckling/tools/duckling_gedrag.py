@@ -254,7 +254,10 @@ def main():
         p = esp(ball, cam_pos, cam_R)
         v100 = np.array([grids[keys["style"]].v100])
         vx, wz, head, fix = beh.step(p, DT, v100)
-        head = np.clip(head[0], -head_lim, head_lim)
+        # 2026-11-01: zittend stuurt de toestandsmachine de kop direct (netwerk uit) -> vol bereik;
+        # alleen staand/lopend begrenzen tot wat het netwerk kent
+        lim = head_lim if st["posture"] == "STAAT" else HEAD_LIMITS
+        head = np.clip(head[0], -lim, lim)
         # 2026-10-30: de begrensde kopstand terug naar de toestandsmachine (zoals in de training):
         # anders rekent hij met een kophoek die de kop niet heeft -> draait de verkeerde kant op
         beh.h_yaw = np.array([head[2]])
