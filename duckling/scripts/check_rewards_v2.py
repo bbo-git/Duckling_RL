@@ -76,11 +76,14 @@ def main():
                         if nm.endswith(("hip_pitch", "ankle")):
                             q[0, legs[j]] = home[0, legs[j]] + 0.2 * (qr[j] - mean[j])
                     z = float(sample(ref.h, g, ph2)); x, vx = 0.6 * x, 0.6 * v
+                quat = [1.0, 0.0, 0.0, 0.0]
+                if kind in ("eigen loopje", "loopje andere stijl", "trappelen op de plaats"):
+                    quat = [float(v) for v in sample(ref.rq, g, ph)]
                 dq = torch.zeros_like(q) if prev_q is None else (q - prev_q) / env.step_dt
                 prev_q = q
                 n = env.num_envs
                 rob.write_joint_state_to_sim(q.repeat(n, 1), dq.repeat(n, 1))
-                pose = torch.tensor([[x, 0.0, z - 0.0003, 1.0, 0.0, 0.0, 0.0]]).repeat(n, 1)
+                pose = torch.tensor([[x, 0.0, z - 0.0003] + quat]).repeat(n, 1)
                 vel = torch.zeros(n, 6); vel[:, 0] = vx
                 rob.write_root_link_pose_to_sim(pose)
                 rob.write_root_link_velocity_to_sim(vel)

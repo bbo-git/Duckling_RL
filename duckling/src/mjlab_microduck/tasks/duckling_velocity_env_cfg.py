@@ -1282,22 +1282,22 @@ def flat_feet(env, sensor_name: str = "feet_ground_contact", std_deg: float = 8.
               command_name: str = "twist") -> torch.Tensor:
     """Soles flat on the floor while they carry weight (no ankle roll on this robot, so a
     tilted sole means standing on its edge). Mean over the feet in contact.
-    2026-11-01: alleen bij STILSTAAN. Lopend rolt jouw loopje over hiel en teen (enkel-pitch);
-    plat houden kostte het eigen loopje 1.5 van de 2 punten en hield de enkel vast."""
+    2026-11-01 (Jairo): alleen de ROLL van de zool (op de zijkant staan), niet de pitch: jouw loopje
+    rolt over hiel en teen (enkel-pitch); plat houden in pitch hield de enkel vast. De enkel draait
+    om de y-as van de teen, dus de y-as blijft bij pitch horizontaal; z-component van de y-as = roll."""
     asset = env.scene["robot"]
     ids = getattr(env, "_duck_toe_ids", None)
     if ids is None:
         ids = asset.find_bodies(["L_toe", "R_toe"], preserve_order=True)[0]
         env._duck_toe_ids = ids
     quat = asset.data.body_link_quat_w[:, ids]                       # (N, 2, 4) wxyz
-    x, y = quat[..., 1], quat[..., 2]
-    cos_tilt = 1 - 2 * (x * x + y * y)                               # body z-axis . world z
-    tilt = torch.acos(torch.clamp(cos_tilt, -1.0, 1.0))
+    w, x, y, z = quat[..., 0], quat[..., 1], quat[..., 2], quat[..., 3]
+    y_up = 2 * (y * z + w * x)                                       # z-component van de teen-y-as
+    tilt = torch.asin(torch.clamp(y_up, -1.0, 1.0))                  # alleen roll
     r = torch.exp(-torch.square(tilt / math.radians(std_deg)))
     found = env.scene.sensors[sensor_name].data.found.reshape(env.num_envs, -1)[:, :2] > 0
     n = found.float().sum(-1)
-    r = torch.where(n > 0, (r * found.float()).sum(-1) / n.clamp(min=1), torch.zeros_like(n))
-    return r * (~_moving(env, command_name)).float()
+    return torch.where(n > 0, (r * found.float()).sum(-1) / n.clamp(min=1), torch.zeros_like(n))
 
 
 def make_duckling_velocity_env_cfg(play: bool = False, rough: bool = False) -> ManagerBasedRlEnvCfg:
