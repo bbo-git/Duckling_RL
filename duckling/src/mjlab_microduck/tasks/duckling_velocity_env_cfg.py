@@ -1532,9 +1532,11 @@ def make_duckling_velocity_env_cfg(play: bool = False, rough: bool = False) -> M
     cfg.curriculum["head_pose_range"].params["range_stages"] = [
         {"step": 0, "ranges": _head_stage(0.05)},
         {"step": 500 * 24, "ranges": _head_stage(0.15)},
-        {"step": 1000 * 24, "ranges": _head_stage(0.35)},
-        {"step": 1500 * 24, "ranges": _head_stage(0.65)},
-        {"step": 2000 * 24, "ranges": _head_stage(1.0)},
+        # 2026-11-01 (Jairo: draait zijn kop niet tijdens het lopen): sneller naar het volle bereik
+        # (was 1000/1500/2000 -> 35/65/100 %); het lopen staat bij 500 al
+        {"step": 600 * 24, "ranges": _head_stage(0.35)},
+        {"step": 800 * 24, "ranges": _head_stage(0.65)},
+        {"step": 1000 * 24, "ranges": _head_stage(1.0)},
     ]
 
     # --- CoM randomization scaled to the smaller support polygon

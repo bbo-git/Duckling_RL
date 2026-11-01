@@ -154,7 +154,7 @@ def main():
     full = [W.GaitGrid(np.load(p)) for _, p in P.STYLES]     # voor kinematisch afspelen
     style = [n for n, _ in P.STYLES].index(a.stijl)
     pol = P.Policy(a.onnx) if a.onnx else None
-    # 2026-10-30: de training breidt het kopbereik uit (iter 0/500/1000/1500/2000: 5/15/35/65/100 %).
+    # 2026-10-30: de training breidt het kopbereik uit (iter 0/500/600/800/1000: 5/15/35/65/100 %).
     # Een vroeg netwerk krijgt hier dus niet meer kop dan het kent (anders valt/draait het raar).
     head_lim = HEAD_LIMITS.copy()
     if pol is not None and not a.kop_vol:
@@ -162,7 +162,7 @@ def main():
         mm = re.search(r"_(\d+)\.onnx$", a.onnx)
         if mm:
             it = int(mm.group(1))
-            frac = 1.0 if it >= 2000 else 0.65 if it >= 1500 else 0.35 if it >= 1000 else 0.15 if it >= 500 else 0.05
+            frac = 1.0 if it >= 1000 else 0.65 if it >= 800 else 0.35 if it >= 600 else 0.15 if it >= 500 else 0.05   # 2026-11-01
             head_lim = HEAD_LIMITS * frac
             print(f"kopbereik {frac:.0%} (zoals in de training op iteratie {it}; --kop-vol = alles)")
     if pol is not None:
