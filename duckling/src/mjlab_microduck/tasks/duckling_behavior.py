@@ -98,6 +98,8 @@ LOOK_STEP = 0.45          # rad: nieuw rondkijkpunt minstens 26 gr van het vorig
 GL_EVERY, GL_T = 5.0, 0.7          # bekijkt hij iets stils: gemiddeld om de 5 s even weg- en terugkijken
 PURSUIT_FLOW = 0.15       # 2026-11-01 (Jairo: kop strakker): punt beweegt (rad/s) -> kop volgt continu
 UP_DELAY = 1.2            # s na opstaan (opstaan 0.8 + netwerk invaden) eerst stil staan voor hij draait/loopt (250 viel om bij meteen draaien)
+HEAD_YAW_TURN = 0.1   # 2026-11-01 (1150): draaien naar het doel -> kop ~recht, het lijf draait (kop opzij remde het draaien)
+W_TURN = 1.0 # rad/s: harder vragen (1150 haalt ~35 %)
 HEAD_YAW_WALK = 0.45      # 2026-11-01: kop max 26 gr opzij tijdens lopen/draaien (run 800: kop +40 gr
                           # -> lijf draait 25-60 gr/s de ANDERE kant op, ook als het commando goed is:
                           # de 52 g kop verschuift het zwaartepunt). Het lijf draait, de kop leidt een beetje.
@@ -304,7 +306,8 @@ class Behavior:
         # KIJKEN: draait op de plaats als de persoon > 25 gr opzij staat
         turn = (S == WATCH) & (absv(b) > 0.45)
         wz = where(turn, w_face, wz)
-        wz = clip(wz, -W_MAX, W_MAX)
+        draait = (absv(wz) > 0.15) & (S != ORBIT)
+        wz = where(draait, clip(wz * (W_TURN / W_MAX), -W_TURN, W_TURN), clip(wz, -W_MAX, W_MAX))
         # geleidelijk
         # na opstaan eerst even stil (anders draait hij terwijl hij nog niet stevig staat)
         self.t_up = where(S == REST, self.t_up * 0, self.t_up + dt)
@@ -424,6 +427,7 @@ class Behavior:
         goal_elev = clip(goal_elev, HEAD_ELEV_MIN, HEAD_ELEV_MAX)
         loco = (S == APPROACH) | (S == FOLLOW) | (S == BACKOFF) | (S == SEARCH) | turn
         ylim = where(loco, u * 0 + HEAD_YAW_WALK, u * 0 + HEAD_YAW_MAX)
+        ylim = where(absv(self.wz) > 0.15, u * 0 + HEAD_YAW_TURN, ylim)
         goal_yaw = clip(goal_yaw, -ylim, ylim)
         # zitten <-> staan (de robot/player zegt het): kop recht, anders valt hij om met de kop opzij
         if "center_head" in p:
