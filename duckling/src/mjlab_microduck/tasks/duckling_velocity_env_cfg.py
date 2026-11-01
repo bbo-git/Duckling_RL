@@ -46,7 +46,7 @@ DECIMATION = 10
 # 2026-10-29 (V2, alles servo's): HOME = CAD-nulstand, romp staat op 59.2 mm
 HOME_TRUNK_HEIGHT = 0.0592  # m, trunk_base standing in HOME
 STANCE_MAX_WIDTH = 0.065   # m (V1). V2: per stijl = voetbreedte van het loopje + STANCE_SLACK
-STANCE_SLACK = 0.012       # m boven de voetbreedte van de stijl
+STANCE_SLACK = 0.005       # m boven de voetbreedte van de stijl (2026-11-01: 12 -> 5 mm, Jairo: minder wijdbeens)
 MIN_TRUNK_HEIGHT = 0.046  # m; V2 loopt op 60-65 mm, hurkt tot ~44 mm (hurken is een aparte beweging)
 
 # --- 2026-10-29: STIJLEN. Eén policy, meerdere loopjes ("karakter"). Per episode krijgt elke env
@@ -1364,7 +1364,7 @@ def make_duckling_velocity_env_cfg(play: bool = False, rough: bool = False) -> M
     R["dof_pos_limits"].params["asset_cfg"] = SceneEntityCfg(
         "robot", joint_names=(r"^(?!passive_).*",))   # passive jaw rests on its limit
     R["stance_width"] = RewardTermCfg(
-        func=_stance_too_wide, weight=-100.0,
+        func=_stance_too_wide, weight=-200.0,   # 2026-11-01: -100 -> -200
         params={"max_width": STANCE_MAX_WIDTH,
                 "asset_cfg": SceneEntityCfg("robot", site_names=("left_foot", "right_foot"))},
     )
