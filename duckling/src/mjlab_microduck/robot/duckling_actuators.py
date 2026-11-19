@@ -24,7 +24,7 @@ DIFF_HEAD = dict(ES9251, kp=0.3, kd=0.003)
 DELAY = dict(delay_min_lag=1, delay_max_lag=6)   # 2026-10-31: 2-12 ms commandovertraging (was 0-4 ms)
 # 2026-10-31: echte hobbyservo's zijn minder soepel dan het model. Per env (vast voor de run):
 DEADBAND_DEG = (0.3, 1.5)    # dode zone: servo reageert pas op een fout groter dan dit (servo-as)
-SPEED_SCALE = (0.8, 1.1)     # onbelaste snelheid ten opzichte van de spec
+SPEED_SCALE = (0.8, 1.5)     # onbelaste snelheid t.o.v. de spec (2026-11-19: was 0.8-1.1; echte servo op 4,2 V sneller)
 
 
 def _per_env(lo, hi, n_env, n_j, device):

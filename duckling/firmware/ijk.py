@@ -13,7 +13,7 @@
 #  offset  = servohoek (gr) waarbij het gewricht in HOME staat (de CAD-nulstand).
 #  teken   = +1 of -1: welke kant de servo op draait bij een positieve gewrichtshoek.
 #  differentieel (heup, kop): servo A = 1.5*(uit + drager), servo B = 1.5*(uit - drager)
-#                             heup: uit = pitch, drager = roll; kop: uit = yaw, drager = roll.
+#                             heup: uit = pitch, drager = roll; kop: uit = yaw, drager = roll.k
 #
 # COMMANDO'S (Enter na elk commando)
 #  lijst                 alle gewrichten en servo's met hun ijking
@@ -25,6 +25,7 @@
 #  herstel               niet-bewaarde bijstellingen weggooien (terug naar calib.json)
 #  ++ / --               5 stappen
 #  stap <gr>             stapgrootte (standaard 1, bv. stap 0.5)
+#  hz <50|100|150|200>   pulsfrequentie van de servo's (standaard 50; hoger = minder vertraging)
 #  test <gr> [s] [n]     gekozen gewricht langzaam heen en weer rond HOME: +gr en -gr, n keer
 #                        in s seconden (standaard 5 s, 3 keer). Bv. test 5  of  test 10 8 2
 #  test alles <gr> [s] [n]  ALLE aangezette gewrichten tegelijk, zelfde beweging; bij een
@@ -46,9 +47,12 @@ import json, math, time
 from machine import Pin, PWM
 
 US_MID = 1500.0        # us bij servohoek 0
+PWM_HZ = 50            # 2026-11-03: pulsfrequentie; digitale servo's kunnen 100-200 Hz (commando "hz")
+def dt_ms():
+    return max(5, int(1000 / PWM_HZ))   # zo vaak een nieuwe stand sturen als de servo pulsen krijgt
 US_PER_DEG = 10.0      # us per graad servo-as (CONTROLEREN: zet 'test 45' en meet de echte hoek)
 US_MIN, US_MAX = 600, 2400
-MAX_OFFSET = 30.0      # gr: groter is vrijwel zeker een verkeerd gemonteerde hoorn/tandwiel
+MAX_OFFSET = 60.0      # gr: groter is vrijwel zeker een verkeerd gemonteerde hoorn/tandwiel
 MAX_SPEED = 60.0       # gr/s servo-as bij bewegen
 RATIO = 1.5            # differentieel 24:16
 
@@ -115,12 +119,12 @@ def move(targets):
         print("  (die servo('s) staan uit - eerst 'aan <naam>')")
         return
     dmax = max(abs(t - pos.get(n, 0.0)) for n, t in targets.items())
-    k = max(1, int(dmax / MAX_SPEED / 0.02))
+    k = max(1, int(dmax / MAX_SPEED / (dt_ms() / 1000)))
     start = {n: pos.get(n, 0.0) for n in targets}
     for i in range(1, k + 1):
         for n, t in targets.items():
             write(n, start[n] + (t - start[n]) * i / k)
-        time.sleep_ms(20)
+        time.sleep_ms(dt_ms())
     pos.update(targets)
 
 
@@ -128,7 +132,7 @@ def on(n):
     if n in pwm:
         return
     p = PWM(Pin(SERVOS[n]))
-    p.freq(50)
+    p.freq(PWM_HZ)
     pwm[n] = p
     pos[n] = 0.0
     write(n, 0.0)
@@ -185,7 +189,7 @@ def show_sel():
 
 def test(deg, dur=5.0, cycles=3, name=None):
     """Langzaam en continu heen en weer rond HOME: +deg en -deg, 'cycles' keer in 'dur' s.
-    Zachte start en stop (amplitude zwelt aan en af), begint en eindigt in HOME."""
+    Vaste amplitude (sinus in de tijd), begint en eindigt in HOME."""
     name = name or sel
     j = JOINTS.get(name)
     if j is None:
@@ -204,15 +208,14 @@ def test(deg, dur=5.0, cycles=3, name=None):
         return
     move({n: 0.0 for n in servos})                       # vanuit HOME
     print("  ", name, "+-%.1f gr, %d keer heen en weer in %.0f s (Ctrl+C = stoppen)" % (a, cycles, dur))
-    n = int(dur / 0.02)
+    n = int(dur / (dt_ms() / 1000))
     try:
         for i in range(n + 1):
             t = i / n                                     # 0..1
-            env = math.sin(math.pi * t) ** 2              # zacht aan en uit
-            x = clamp(a * env * math.sin(2 * math.pi * cycles * t), rng[0], rng[1])   # bv. kaak: niet onder 0
+            x = clamp(a * math.sin(2 * math.pi * cycles * t), rng[0], rng[1])   # vaste amplitude (2026-11-03); kaak: niet onder 0
             for sv, v in targets(x).items():
                 write(sv, v)
-            time.sleep_ms(20)
+            time.sleep_ms(dt_ms())
     except KeyboardInterrupt:
         print("  gestopt")
         move({sv: 0.0 for sv in servos})
@@ -244,11 +247,11 @@ def test_samen(names, deg, dur=5.0, cycles=3, met_fase=False):
     servos = sorted({n for jn in names for n in servos_of(jn)})
     move({n: 0.0 for n in servos})
     print("   samen:", ", ".join(names), "+-%.1f gr, %d keer in %.0f s (Ctrl+C = stoppen)" % (abs(deg), cycles, dur))
-    n = int(dur / 0.02)
+    n = int(dur / (dt_ms() / 1000))
     try:
         for i in range(n + 1):
             t = i / n
-            env = abs(deg) * math.sin(math.pi * t) ** 2
+            env = abs(deg)                                # vaste amplitude (2026-11-03)
             tot = {}
             for jn in names:
                 ph = fase(jn) if met_fase else 0.0
@@ -257,7 +260,7 @@ def test_samen(names, deg, dur=5.0, cycles=3, met_fase=False):
                     tot[sv] = tot.get(sv, 0.0) + v
             for sv, v in tot.items():
                 write(sv, v)
-            time.sleep_ms(20)
+            time.sleep_ms(dt_ms())
     except KeyboardInterrupt:
         print("  gestopt")
     move({sv: 0.0 for sv in servos})
@@ -309,7 +312,7 @@ while True:
             for n in names:
                 on(n)
         elif c == "uit":
-            for n in (servos_of(args[0]) if args else list(pwm)):
+            for n in (servos_of(args[0]) if args and args[0] != "alles" else list(pwm)):
                 off(n)
             # gewrichten waarvan een servo nu uit staat tellen niet meer mee
             actief[:] = [jn for jn in actief if all(n in pwm for n in servos_of(jn))]
@@ -335,6 +338,20 @@ while True:
                 for n in servos_of(sel):
                     trim(n, d)
             show_sel()
+        elif c == "hz":
+            # 2026-11-03: pulsfrequentie van alle servo's (50 = standaard; 100-200 = minder vertraging)
+            if not args:
+                print("  nu", PWM_HZ, "Hz. Gebruik: hz 50 | hz 100 | hz 150 | hz 200")
+            else:
+                hz = int(args[0])
+                if hz not in (50, 100, 150, 200):
+                    print("  kies 50, 100, 150 of 200")
+                else:
+                    PWM_HZ = hz
+                    for n in pwm:
+                        pwm[n].freq(PWM_HZ)
+                        write(n, pos[n])
+                    print("  pulsfrequentie", PWM_HZ, "Hz (puls elke %d ms). Let op warmte en zoemen; terug: hz 50" % (1000 // PWM_HZ))
         elif c == "stap":
             step = clamp(float(args[0]), 0.1, 5.0)
             print("  stap", step, "gr")

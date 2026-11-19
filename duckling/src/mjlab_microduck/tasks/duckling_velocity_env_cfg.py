@@ -1023,13 +1023,25 @@ class FilteredJointPositionAction(_JPA):
                                     for n in self._target_names], device=self.device)
         self._head = torch.tensor([n in HEAD_JOINT_NAMES for n in self._target_names], device=self.device)
         self._dt = env.step_dt
+        # 2026-11-19: vertraging tussen netwerk en servo (PWM 50 Hz + servo-elektronica): per env 0, 1 of 2
+        # stappen (0/20/40 ms, kans 40/45/15 %). Het netwerk (en de schatting est) weet dat niet, net als de firmware.
+        self._hist = [self._filt.clone() for _ in range(3)]
+        self._lag = torch.zeros(self._filt.shape[0], dtype=torch.long, device=self.device)
+        self._resample_lag(slice(None))
+
+    def _resample_lag(self, env_ids):
+        n = self._lag[env_ids].numel()
+        u = torch.rand(n, device=self.device)
+        self._lag[env_ids] = (u > 0.40).long() + (u > 0.85).long()
 
     def process_actions(self, actions):
         super().process_actions(actions)
         self._prev2 = self._prev.clone()
         self._prev = self._filt.clone()
         self._filt = self._filt + self._alpha * (self._processed_actions - self._filt)
-        self._processed_actions = self._filt.clone()
+        self._hist = [self._filt.clone()] + self._hist[:-1]
+        h = torch.stack(self._hist, 0)                                    # (3, envs, joints)
+        self._processed_actions = h[self._lag, torch.arange(h.shape[1], device=self.device)]
         # schatting van de gewrichtsstand aan het eind van deze stap (zoals de firmware)
         self._est_prev = self._est.clone()
         step = self._vmax * self._dt
@@ -1045,6 +1057,9 @@ class FilteredJointPositionAction(_JPA):
         self._prev2[env_ids] = q[env_ids]
         self._est[env_ids] = q[env_ids]
         self._est_prev[env_ids] = q[env_ids]
+        for hh in self._hist:
+            hh[env_ids] = q[env_ids]
+        self._resample_lag(env_ids)
 
 
 def joint_pos_est(env, action_name: str = "joint_pos") -> torch.Tensor:
@@ -1444,12 +1459,14 @@ def make_duckling_velocity_env_cfg(play: bool = False, rough: bool = False) -> M
     )
     cfg.events["randomize_pd_gains"] = EventTermCfg(
         func=dr.pd_gains, mode="reset",
-        params={"asset_cfg": deepcopy(ACTUATED), "kp_range": (0.8, 1.2), "kd_range": (0.7, 1.3)},
+        params={"asset_cfg": deepcopy(ACTUATED), "kp_range": (0.7, 2.0), "kd_range": (0.7, 1.5)},   # 2026-11-19: was 0.8-1.2
     )
     # Motor strength is the biggest unknown until the bench test: train for 85-115 %.
+    # 2026-11-19: echte eend (1150) schrok direct en viel achterover; in de sim loopt 1150 bij 1,3x
+    # sterkere servo's al slecht en bij 1,6x achteruit. Nu 70-180 % (+ stijfheid en vertraging hieronder).
     cfg.events["randomize_effort_limits"] = EventTermCfg(
         func=dr.effort_limits, mode="reset",
-        params={"asset_cfg": deepcopy(ACTUATED), "effort_limit_range": (0.85, 1.15)},
+        params={"asset_cfg": deepcopy(ACTUATED), "effort_limit_range": (0.7, 1.8)},
     )
     if "randomize_head_com" in cfg.events:
         cfg.events["randomize_head_com"].params["asset_cfg"] = SceneEntityCfg(

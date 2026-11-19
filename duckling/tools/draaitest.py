@@ -1,8 +1,11 @@
+"""draaitest.py - draait het netwerk de goede kant op, met de kop recht en 40 gr opzij? (player-fysica)
+    python tools/draaitest.py <onnx>"""
 import sys, os, math, numpy as np
-D = os.path.abspath("tr/microduck_rl/src/mjlab_microduck/robot/duckling"); T = os.path.abspath("tr/microduck_rl/tools")
+T = os.path.dirname(os.path.abspath(__file__)); D = os.path.join(T, "..", "src", "mjlab_microduck", "robot", "duckling")
+ONNX = os.path.abspath(sys.argv[1])   # 2026-11-04: pad t.o.v. waar je het start
 sys.path.insert(0, T); os.chdir(D)
 import duckling_play_onnx as P
-robot = P.Duckling("scene_walk.xml"); pol = P.Policy(sys.argv[1])
+robot = P.Duckling("scene_walk.xml"); pol = P.Policy(ONNX)
 robot.gait_clock = True; robot.styled = pol.n_in == 63 + len(P.STYLES)
 robot.grids = [P.GridClock(p) for _, p in P.STYLES]
 names = robot.names; hy = names.index("head_yaw")

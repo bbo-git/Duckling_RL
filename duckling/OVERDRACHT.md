@@ -205,8 +205,91 @@ ESP32-CAM: GPIO 1/3 vrij laten (flashen/debug); niet gebruiken: 0 (boot), 12 (st
 - Servo's direct aan de accu; 470-1000 uF low-ESR bij de servo's; ster-GND bij de accu.
 - Core2350B: de pin "VB" is VBUS; daarachter zit de ME6217 3.3 V LDO (800 mA, lage drop-out).
   GEEN diode op het bordje tussen VBUS en USB. Voorlopig (Jairo): ACCU UIT voordat USB erin gaat.
-  Upgrade zonder spanningsverlies: P-MOSFET (AO3401 / DMG2305UX) accu -> VB, gate aan USB-5V,
-  100k gate naar GND: USB erin = accu automatisch afgekoppeld (zoals de Raspberry Pi Pico).
+  Testen met USB: draad accu -> VB los (bordje op USB, accu alleen naar de servo's, GND samen).
+  Los lopen: accu -> VB (schakelaartje), USB eruit. (2026-11-03: een losse P-MOSFET met de gate aan
+  USB-5V werkt hier NIET - VB is hetzelfde net als USB-5V. Wel: ideale diode LM66100 accu -> VB.)
 - 3V3-pin = uitgang van die LDO: voedt IMU en ESP32-CAM (op diens 3.3 V-pin, niet 5 V: de
   AMS1117 op de ESP-cam heeft ~1 V verlies nodig). 100 uF bij de ESP-cam. Bij een bijna lege accu
   (< ~3.5 V) zakt 3V3 het eerst weg -> ESP brown-out: batterijspanning bewaken.
+
+
+## Snel naslaan (stand 4 nov 2026)
+
+### Afspelen lokaal (Windows, PowerShell)
+Altijd vanuit de map met de robot-modellen starten (de scène wordt relatief gezocht):
+```
+cd $HOME\Documents\Duckling_RL\duckling\src\mjlab_microduck\robot\duckling
+python ..\..\..\..\tools\duckling_gedrag.py ..\..\..\..\..\onnx\duckling_walk_1600.onnx
+```
+- `--kop-vol`  volle kopbereik (anders begrensd zoals de training op die iteratie)
+- `--stijl parmantig`  andere stijl (standaard normaal)
+- `--test 30`  zonder venster: 30 s vast script, alleen tekst (controle)
+- zonder onnx: kinematisch voorbeeld (alleen het loopje + gedrag, geen netwerk)
+- bal: pijltoetsen (eerst in het beeld klikken), End = voor de robot, Home = camera erbij;
+  schuifjes: intensiteit, grootte, wandel, stijl, uit_beeld
+- nieuwste onnx van de pod ophalen: `cd $HOME\Documents\Duckling_RL` en `git pull`
+- loop-test zonder gedrag: `python ..\..\..\..\tools\duckling_play_onnx.py ..\..\..\..\..\onnx\duckling_walk_1600.onnx`
+- draaien meten: `python ..\..\..\..\tools\draaitest.py <onnx>` (kop recht / +40 / -40 gr)
+
+### Pod (RunPod, 8192 envs is het beste)
+```
+cd /workspace/Duckling_RL/duckling && export REPO=$PWD
+./duck.sh update /workspace/Duckling_RL/duck_v2_compleetNN.zip
+./duck.sh setup                       # na een update met nieuwe afhankelijkheden
+envs=8192 ./duck.sh train             # nieuw
+envs=8192 ./duck.sh resume 3000 [ckpt]  # verder (vanaf model_<ckpt>.pt)
+./duck.sh token                       # git-token 8 uur onthouden
+./duck.sh export 1600 --push          # onnx naar onnx/ in de repo
+```
+
+### Eindversie
+`onnx/duckling_walk_1150.onnx` (zie `onnx/EINDVERSIE.md`; 2026-11-10 gekozen boven 1600: stabieler, draait beter).
+Code: `duck_v2_compleet30.zip`.
+
+### Firmware
+- Ijken: `firmware/ijk.py` (MicroPython, Thonny). Na `bewaar` + `toon`: JSON in `firmware/calib.json`.
+  Let op: `aan` springt direct naar HOME - eerst met `kies` + `--`/`++` de offset goed (servo staat dan uit).
+  `hz 100` = snellere servopulsen (test).
+- Loop-firmware RP2350: `firmware/duckling_loop` (Arduino, board "Waveshare RP2350 Core").
+  Na nieuwe ijking/netwerk: `python tools/maak_firmware_data.py --onnx ../onnx/duckling_walk_1150.onnx
+  --grid src/mjlab_microduck/robot/duckling/grids/gait_grid_normaal_v3.npz --calib firmware/calib.json
+  --uit firmware/duckling_loop`, dan uploaden. Commando's: zie LEESMIJ (thuis, anim, staan, loop, draai,
+  imu ijk, log, cam, wifi aan|uit, lamp).
+- Camera ESP32-CAM: `firmware/duckling_cam` (board "AI Thinker ESP32-CAM", Partition Scheme "Minimal SPIFFS
+  ... with OTA"). Bijwerken: Schets -> Gecompileerd binair bestand exporteren, dan wifi Duckling-cam /
+  duckling1, http://192.168.4.1/update (gebruiker duck). Afstellen: http://192.168.4.1 (rot, res=1, drempels,
+  bewaar). Voeding: 3V3-pin (van de RP2350) of 5V-pin; NOOIT VCC.
+- Nog te doen: knieën, enkels, nek ijken; gedrag (`duckling_behavior.py`) naar C op de RP2350.
+
+
+## Checklist: van laatste servo's tot lopen (2026-11-10)
+**1. Servo's monteren en ijken** (servo-voeding: labvoeding, stroombegrenzing ~1,5 A)
+1. MicroPython op de RP2350 (BOOT-modus, MicroPython-.uf2 erop slepen), `ijk.py` in Thonny.
+2. Per nieuwe servo (knieën, enkels, nek) eerst meten: weerstand signaal-plus hoog (anders sloopt hij een GPIO).
+3. Offset VOOR het aanzetten: `kies L_knie`, eventueel `--`/`++`, dan pas `aan L_knie` (springt naar HOME).
+4. Richting: `naar 20` (verkeerd om: `draai`), dan `test 10 6 2`.
+5. Klaar: `bewaar` + `toon`, JSON in `firmware\calib.json`.
+
+**2. Firmware opnieuw maken**
+6. `python tools/maak_firmware_data.py --onnx ../onnx/duckling_walk_1150.onnx --grid src/mjlab_microduck/robot/duckling/grids/gait_grid_normaal_v3.npz --calib firmware/calib.json --uit firmware/duckling_loop`,
+   dan compileren/exporteren en de .uf2 in BOOT-modus naar de RP2350 slepen (of Claude vragen: die maakt de .uf2).
+7. `status`: niets meer onder "nog niet geijkt".
+
+**3. Accu aansluiten**
+8. Accu+ via schakelaar naar de servo's en via de deler (2x 100 kOhm + 100 nF) naar GPIO 40; GND in het sterpunt.
+9. Testen met USB: accu NIET aan VB (bordje op USB, servo's op de accu).
+10. `status`: accuspanning 3,7-4,2 V.
+
+**4. Eerste beweging (hangend aan een touwtje, voeten los)**
+11. `thuis`: alles recht zoals in CAD?
+12. `anim 0.3`, dan `anim 1`: loopje goed, links/rechts gespiegeld? Verkeerd gewricht: `ijk.py` + `draai`, terug naar 5.
+13. `slap` of het knopje zodra er iets raar gaat.
+
+**5. Lopen (voeten op tafel, touw slap)**
+14. `staan`: rustig, geen zoemen?
+15. `loop 0.3`, `draai 20`, `draai -20`.
+16. Gevallen: hij wordt zelf slap; `log` kopiëren en opsturen.
+
+**6. Daarna**
+17. Los lopen: accu ook aan VB (schakelaar), USB eruit.
+18. Kijkgedrag (`duckling_behavior.py`) naar C op de RP2350, zodat hij op de camera reageert.
