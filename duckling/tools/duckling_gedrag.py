@@ -141,6 +141,8 @@ def main():
     ap.add_argument("--mooi", action="store_true")
     ap.add_argument("--zit", default="favorites/zit_v2.json",
                     help="zithouding uit sit_gen.py (S slaat sit_motion.npz + .json op); ontbreekt = standaard hurken")
+    ap.add_argument("--zitten", action="store_true",
+                    help="2026-11-19: standaard zit hij NIET meer (rust = blijven staan); --zitten = oude gedrag")
     ap.add_argument("--kop-vol", action="store_true",
                     help="volle kopbereik, ook als het netwerk dat in de training nog niet kreeg")
     ap.add_argument("--test", type=float, default=0.0, help="zonder viewer: zoveel s met een vast script (controle)")
@@ -190,16 +192,18 @@ def main():
 
     esp = FakeESP()
     beh = B.Behavior(np.zeros(1))
-    st = dict(posture="ZIT", t_post=0.0, rest_b=0.0, sit=1.0, phase=0.0, pos=np.zeros(2), yaw=0.0, t=0.0)
+    p0, s0 = ("ZIT", 1.0) if a.zitten else ("STAAT", 0.0)
+    st = dict(posture=p0, t_post=0.0, rest_b=0.0, sit=s0, phase=0.0, pos=np.zeros(2), yaw=0.0, t=0.0)
     keys = dict(style=style)
 
     def reset():
         robot.reset()
         beh.reset(np.array([0]))
         esp.__init__()
-        st.update(posture="ZIT", t_post=0.0, rest_b=0.0, sit=1.0, phase=0.0, pos=np.zeros(2), yaw=0.0)
+        st.update(posture=p0, t_post=0.0, rest_b=0.0, sit=s0, phase=0.0, pos=np.zeros(2), yaw=0.0)
         ball[:] = [0.6, 0.0, BALL_H]
-        robot.d.qpos[robot.qadr] = robot.home + crouch
+        if a.zitten:
+            robot.d.qpos[robot.qadr] = robot.home + crouch
         mujoco.mj_forward(m, robot.d)
 
     sl = {n: m.actuator(n).id for n, _, _ in SLIDERS}
@@ -268,7 +272,7 @@ def main():
         beh.h_elev = np.array([head[1] - head[0]])
         state = int(beh.state[0])
         # houding: RUST = zitten; uit RUST eerst opstaan (netwerk uit, commando 0)
-        want_sit = state == B.REST
+        want_sit = a.zitten and state == B.REST   # 2026-11-19: standaard nooit zitten
         if st["posture"] == "STAAT" and want_sit and st["rest_b"] <= 0.0 and abs(head[2]) < 0.15 and abs(head[1] - head[0]) < 0.15:
             st.update(posture="GAAT ZITTEN", t_post=0.0)
         elif st["posture"] == "ZIT" and not want_sit:
