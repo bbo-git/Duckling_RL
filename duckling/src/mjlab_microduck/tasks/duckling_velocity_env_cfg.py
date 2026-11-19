@@ -56,13 +56,14 @@ STYLES = [   # (naam, rooster in robot/duckling/grids/)
     ("normaal", "gait_grid_normaal_v3.npz"),
     ("parmantig", "gait_grid_parmantig_v5.npz"),
 ]
-STYLE_PROBS = (0.5, 0.5)
+STYLE_PROBS = (1.0, 0.0)   # 2026-11-19: eerst alleen "normaal" (one-hot blijft 2 lang: firmware ongewijzigd)
 # Taak: "lopen" (snelheidscommando's, eerst trainen) of "volgen" (persoon volgen, fine-tune daarna)
 TASK = os.environ.get("DUCK_TASK", "lopen")
 # 2026-10-29: GEDRAG - in dit deel van de envs komen vx, wz en het kopcommando uit de toestandsmachine
 # van de robot (duckling_behavior.py) met een virtuele persoon en nep-ESP, zodat de policy alle
 # overgangen oefent (rust -> naderen -> volgen -> orbit -> terug -> ...). De rest: willekeurig.
-BEHAVIOR_FRAC = 0.5
+BEHAVIOR_FRAC = 0.0   # 2026-11-19: vereenvoudigd - geen gedragsmodel/nep-camera; willekeurige commando's
+# (vooruit 0-100 %, draaien, stilstaan) en willekeurige kijkrichtingen. Volgen doet straks de firmware.
 
 HEAD_BODY_NAMES = ("neck", "head_pitch", "head_roll", "head")
 ACTUATED = SceneEntityCfg("robot", joint_names=(r"^(?!passive_).*",))
