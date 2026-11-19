@@ -1126,7 +1126,7 @@ class feet_parallel:
         self.ids = asset.find_bodies(["L_toe", "R_toe"], preserve_order=True)[0]
         self.hy = [C_LEG.index(f"{s}_hip_yaw") for s in ("left", "right")]
 
-    def __call__(self, env, std: float = 0.15, command_name: str = "twist") -> torch.Tensor:
+    def __call__(self, env, std: float = 0.15, std_wide: float = 0.6, command_name: str = "twist") -> torch.Tensor:
         asset = env.scene["robot"]
         yaw = lambda q: torch.atan2(2 * (q[..., 0] * q[..., 3] + q[..., 1] * q[..., 2]),
                                     1 - 2 * (q[..., 2] ** 2 + q[..., 3] ** 2))
@@ -1135,7 +1135,11 @@ class feet_parallel:
         rel = torch.atan2(torch.sin(f - h[:, None]), torch.cos(f - h[:, None]))
         out = torch.stack([rel[:, 0], -rel[:, 1]], -1)                      # naar buiten +
         ref = _ref(env).q_now(env)[:, self.hy]                               # heup-yaw ref = voet-yaw ref
-        return torch.exp(-torch.square(out - ref).mean(-1) / std**2)
+        e = torch.square(out - ref).mean(-1)
+        # 2026-11-19: run van 19 nov stond op 1500 met beide heup-yaws op -19 gr (tegen de grens, X-poten,
+        # ook in stilstand). Bij 20 gr fout is exp(-e/0.15^2) ~ 0: geen gradient meer terug. Nu half smal,
+        # half breed (std 0.6 rad ~ 34 gr), zodat hij ook van ver terug wordt getrokken.
+        return 0.5 * torch.exp(-e / std**2) + 0.5 * torch.exp(-e / std_wide**2)
 
 
 C_LEG = LEG_JOINTS
@@ -1399,6 +1403,10 @@ def make_duckling_velocity_env_cfg(play: bool = False, rough: bool = False) -> M
     R["spin_limit"] = RewardTermCfg(func=spin_limit, weight=-2.0)            # no violent spins (> 1 rad/s)
     # 2026-10-29 (Jairo): toe_out eruit - geen straf op de voetstand, de animatie (walk_imitation) doet het werk
     # R["toe_out"] = RewardTermCfg(func=toe_out, weight=-5.0)
+    # 2026-11-19: weer aan (alleen NAAR BINNEN): 1500 stond met de tenen 19 gr naar binnen. Naar buiten
+    # blijft vrij tot 2 rad (de animatie bepaalt), naar binnen vrij tot 0.20 rad (11 gr; bochten tot ~13 gr ref
+    # verdeeld over twee voeten).
+    R["toe_out"] = RewardTermCfg(func=toe_out, weight=-5.0, params={"free": 2.0, "free_in": 0.20})
     R["feet_parallel"] = RewardTermCfg(func=feet_parallel, weight=2.0, params={"std": 0.15})   # 2026-10-30
     R["com_forward"] = RewardTermCfg(func=com_forward, weight=5.0)   # 2026-10-14: CoM ahead of the feet (your walk)
     R["stance_grip"] = RewardTermCfg(func=stance_grip, weight=1.5)   # 2026-10-13: no sliding feet
