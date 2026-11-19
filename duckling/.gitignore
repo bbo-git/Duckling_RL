@@ -15,7 +15,6 @@ wheels/
 
 # Logs and databases
 wandb
-logs
 agents
 
 *.pch
