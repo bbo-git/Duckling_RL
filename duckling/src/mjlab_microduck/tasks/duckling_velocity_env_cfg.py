@@ -1558,6 +1558,15 @@ def make_duckling_velocity_env_cfg(play: bool = False, rough: bool = False) -> M
     # and many standing envs - that run fell over with the head slammed into its limits.
     # (They do NOT restart on resume: the runner restores the step counter on load.)
     cfg.commands["head_pose"].ranges = _head_stage(0.05)
+    # 2026-11-25: STILSTAAN. Met BEHAVIOR_FRAC 0 kwam stilstaan alleen nog uit de standing-curriculum
+    # van microduck (2 % -> 15 % pas op 1000), terwijl de gedrag-envs (50 %) vroeger veel in RUST stonden.
+    # Run 19 nov (800-1500) schoof bij vx=0 15-28 cm weg in 8 s; 1150 (met gedrag) stond stil.
+    if TASK != "volgen" and BEHAVIOR_FRAC == 0.0 and "standing_envs" in cfg.curriculum:
+        cfg.commands["twist"].rel_standing_envs = 0.25
+        cfg.curriculum["standing_envs"].params["standing_stages"] = [
+            {"step": 0, "rel_standing_envs": 0.25},
+            {"step": 1000 * 24, "rel_standing_envs": 0.3},
+        ]
     cfg.curriculum["head_pose_range"].params["range_stages"] = [
         {"step": 0, "ranges": _head_stage(0.05)},
         {"step": 500 * 24, "ranges": _head_stage(0.15)},

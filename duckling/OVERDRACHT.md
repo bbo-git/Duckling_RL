@@ -242,6 +242,25 @@ envs=8192 ./duck.sh resume 3000 [ckpt]  # verder (vanaf model_<ckpt>.pt)
 ./duck.sh export 1600 --push          # onnx naar onnx/ in de repo
 ```
 
+### Pod met global volume (2026-11-25)
+`/workspace` is het volume: bewaard tussen pods, maar **geen chmod** (git en uv werken er niet).
+Repo en omgeving daarom in `/root` (verdwijnt met de pod); checkpoints en de omgeving als één archief op het volume.
+
+Nieuwe pod (snel, met het archief):
+```
+cd /root && git clone https://github.com/bbo-git/Duckling_RL
+tar xf /workspace/duck_env.tar -C /root
+ln -s /workspace/duck_logs Duckling_RL/duckling/logs
+export PATH="$HOME/.local/bin:$PATH"
+cd /root/Duckling_RL && export REPO=$PWD/duckling
+./duckling/duck.sh resume 500 <ckpt>        # of export / status
+```
+Archief (opnieuw) maken, na een `setup` / `UV_HTTP_TIMEOUT=300 uv sync` in `duckling/`:
+```
+cd /root && tar cf /workspace/duck_env.tar Duckling_RL/duckling/.venv .local/share/uv/python .local/bin/uv .local/bin/uvx
+```
+Let op: `resume` pakt de nieuwste run in `duck_logs/rsl_rl/duckling_velocity/`; oude runs naar `duck_logs/oud/`.
+
 ### Eindversie
 `onnx/duckling_walk_1150.onnx` (zie `onnx/EINDVERSIE.md`; 2026-11-10 gekozen boven 1600: stabieler, draait beter).
 Code: `duck_v2_compleet30.zip`.
