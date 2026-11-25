@@ -695,8 +695,13 @@ def stand_still(env, std: float = 0.01, sensor_name: str = "feet_ground_contact"
     v = env.scene["robot"].data.root_link_lin_vel_b[:, :2]
     found = env.scene.sensors[sensor_name].data.found.reshape(env.num_envs, -1)[:, :2] > 0
     qd = env.scene["robot"].data.joint_vel                       # incl. the head: no nodding
-    calm = torch.exp(-torch.mean(torch.square(qd), -1) / 0.25**2)  # rad/s (0.5 still let ankles nod)
-    r = torch.exp(-torch.sum(torch.square(v), -1) / std**2) * found.float().mean(-1) * calm
+    # 2026-11-25: was alleen streng (1 cm/s en 0.25 rad/s) -> run 25 nov verdiende ~1e-5, de hele
+    # training: geen gradient, stilstaan werd nooit geleerd. Nu half streng, half ruim (5 cm/s, 1 rad/s).
+    qq = torch.mean(torch.square(qd), -1)
+    calm = 0.5 * torch.exp(-qq / 0.25**2) + 0.5 * torch.exp(-qq / 1.0**2)
+    vv = torch.sum(torch.square(v), -1)
+    still = 0.5 * torch.exp(-vv / std**2) + 0.5 * torch.exp(-vv / (5 * std)**2)
+    r = still * found.float().mean(-1) * calm
     return r * (~_moving(env, command_name)).float()
 
 
@@ -1492,9 +1497,9 @@ def make_duckling_velocity_env_cfg(play: bool = False, rough: bool = False) -> M
     act_cfg.clip = {k: (math.radians(lo), math.radians(hi)) for k, (lo, hi) in JOINT_TARGET_RANGE_DEG.items()}
     cfg.actions["joint_pos"] = FilteredJointPositionActionCfg(
         **{f: getattr(act_cfg, f) for f in act_cfg.__dataclass_fields__})
-    cfg.rewards["target_rate"] = RewardTermCfg(func=target_rate, weight=-3.0)   # 2026-11-25: -2 -> -3 (450 liep 'druk')
+    cfg.rewards["target_rate"] = RewardTermCfg(func=target_rate, weight=-2.0)
     cfg.rewards["head_target_rate"] = RewardTermCfg(func=head_target_rate, weight=-6.0)
-    cfg.rewards["target_jerk"] = RewardTermCfg(func=target_jerk, weight=-4.0)   # 2026-11-25: -1 -> -4; jouw loopje kost dan ~0.04/stap, ruis 1-4   # 2026-11-01   # 2026-10-31: kop rustiger
+    cfg.rewards["target_jerk"] = RewardTermCfg(func=target_jerk, weight=-1.0)   # 2026-11-01   # 2026-10-31: kop rustiger
     # 2026-11-01: trunk_roll_rate (-0.3) eruit: 300 kon zijn voet niet meer optillen (10 pasjes/s van 2 mm):
     # zonder enkel-roll moet de romp waggelen om het gewicht te verplaatsen. Nu: waggelen zoals jouw loopje.
     cfg.rewards["trunk_waddle"] = RewardTermCfg(func=trunk_waddle, weight=2.0)
@@ -1552,8 +1557,6 @@ def make_duckling_velocity_env_cfg(play: bool = False, rough: bool = False) -> M
         R["com_forward"].weight = 2.0
         R["stand_still"] = RewardTermCfg(func=stand_still, weight=3.0)
         R["flat_feet"] = RewardTermCfg(func=flat_feet, weight=1.0)
-        # 2026-11-25: wiebelen in stilstand weer bestraffen (stond sinds 15 okt uit, ook bij 1150)
-        R["stand_action_rate"] = RewardTermCfg(func=stand_action_rate, weight=-2.0)
 
     # --- head pose commands for Duckling's joint ranges
     # Curricula (restored 2026-10-13): a fresh run must not start with the full head range
