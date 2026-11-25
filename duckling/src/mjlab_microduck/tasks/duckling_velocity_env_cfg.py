@@ -159,7 +159,8 @@ JOINT_TARGET_RANGE_DEG = {
 # 2026-11-01 (1750): hip_yaw 1 -> 3. Na 950 zakten de tenen naar binnen (heup-yaw -13 gr vast, X-poten) en
 # draaide hij niet meer (0.5 rad/s gevraagd, ~0.1 gekregen). Jouw loopje draait met de heup-yaw van het
 # zwaaibeen (+-4 gr bij 30 gr/s, +-13 gr bij 90 gr/s): dat patroon nu even zwaar als heup-pitch.
-IMITATION_JOINT_WEIGHT = {"hip_yaw": 3.0, "hip_roll": 3.0, "hip_pitch": 3.0, "knee": 2.0, "ankle": 2.0}
+IMITATION_JOINT_WEIGHT = {"hip_yaw": 3.0, "hip_roll": 3.0, "hip_pitch": 5.0, "knee": 2.0, "ankle": 2.0}
+# 2026-11-25: hip_pitch 3 -> 5: run 25 nov (600) zwaaide de heup 21-23 gr, jouw loopje 31 gr.
 
 
 _STYLE_CACHE = {}
@@ -669,6 +670,18 @@ def head_pose_with_style(env, command_name: str = "head_pose", std: float = 0.5,
     err = asset.data.joint_pos[:, ids] - asset.data.default_joint_pos[:, ids] - target
     per = (1 - fine_weight) * torch.exp(-(err / std) ** 2) + fine_weight * torch.exp(-(err / fine_std) ** 2)
     return per.mean(-1)
+
+
+def head_calm(env) -> torch.Tensor:
+    """2026-11-25 (Jairo: te druk, doet te veel met de kop): som qd^2 van nek- en kop-pitch (rad/s)^2.
+    Run 25 nov (600) knikte nek 38 gr / kop 30 gr per pas (jouw loopje: 7 / 0 gr) - de kop (52 g)
+    als contragewicht. Jouw knik kost ~1, het geknik van 600 ~15-30 per stap."""
+    asset = env.scene["robot"]
+    ids = getattr(env, "_duck_pitch_head_ids", None)
+    if ids is None:
+        ids = torch.tensor(asset.find_joints(["neck_pitch", "head_pitch"], preserve_order=True)[0], device=env.device)
+        env._duck_pitch_head_ids = ids
+    return torch.square(asset.data.joint_vel[:, ids]).sum(-1)
 
 
 def head_level(env, command_name: str = "head_pose", std: float = 0.3, fine_std: float = 0.06) -> torch.Tensor:
@@ -1431,7 +1444,8 @@ def make_duckling_velocity_env_cfg(play: bool = False, rough: bool = False) -> M
     # volg16b: coarse std 0.25 -> 0.6 rad: at 30 deg off the old one paid ~0 = no way back
     R["head_pose_tracking"].params = {"command_name": "head_pose", "std": 0.6, "fine_std": 0.15}   # 2026-10-31: fijn 0.1 -> 0.15 (minder nerveus)  # std 0.5 -> 0.25: a busy head was nearly free
     # survival: ending an episode must never pay off (else PPO learns to collapse)
-    R["head_level"] = RewardTermCfg(func=head_level, weight=3.0, params={"command_name": "head_pose"})   # volg16b
+    R["head_level"] = RewardTermCfg(func=head_level, weight=3.0, params={"command_name": "head_pose"})
+    R["head_calm"] = RewardTermCfg(func=head_calm, weight=-0.05)   # 2026-11-25: niet knikken als contragewicht   # volg16b
     R["alive"] = RewardTermCfg(func=envs_mdp.is_alive, weight=0.5)
     R["termination"] = RewardTermCfg(func=envs_mdp.is_terminated, weight=-50.0)
     # regularisation

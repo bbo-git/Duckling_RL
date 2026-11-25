@@ -25,4 +25,9 @@ Regel: één verandering per run waar het kan.
 
 ## 2026-11-25 ~07-20 — oranje hervat vanaf 450
 - Enige verandering: stand_still half streng / half ruim (was alleen streng, verdiende ~0).
-- Keuring: (volgt bij 650)
+- Bij 600 (Jairo): veel te druk, te veel kop, te weinig heup. Gemeten (loop 0.5): nek 38 gr / kop 30 gr
+  per pas (loopje 7 / 0), heup-pitch 21-23 gr (loopje 31).
+
+## 2026-11-25 ~07-45 — hervat vanaf 600
+- Twee veranderingen: head_calm (straf op nek/kop-pitch-snelheid, -0.05) en hip_pitch-imitatie 3 -> 5.
+- Keuring: (volgt)
