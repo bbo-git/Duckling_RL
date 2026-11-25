@@ -1,0 +1,47 @@
+--- git commit ---
+76f8400730909dfd2c865c2c8d56c119845b6fa6
+
+
+--- git status ---
+On branch main
+Your branch is up to date with 'origin/main'.
+
+Changes not staged for commit:
+  (use "git add <file>..." to update what will be committed)
+  (use "git restore <file>..." to discard changes in working directory)
+	modified:   duckling/MUJOCO_LOG.TXT
+	modified:   duckling/src/mjlab_microduck/robot/duckling/robot_walk.xml
+
+Untracked files:
+  (use "git add <file>..." to include in what will be committed)
+	duckling/logs
+
+no changes added to commit (use "git add" and/or "git commit -a") 
+
+
+--- git diff ---
+diff --git a/duckling/MUJOCO_LOG.TXT b/duckling/MUJOCO_LOG.TXT
+index 90bbbed..f740c2c 100644
+--- a/duckling/MUJOCO_LOG.TXT
++++ b/duckling/MUJOCO_LOG.TXT
+@@ -14,3 +14,7 @@ WARNING Fri Oct 30 11:43:57 2026: Attach conflict when attaching 'duckling' to '
+ timestep: parent has 0.002, child has 0.001, keeping parent value
+ integrator: parent has 0, child has 3, keeping parent value
+ 
++WARNING Thu Nov 19 06:06:26 2026: Attach conflict when attaching 'duckling' to 'mjlab scene', policy is 'warning'
++timestep: parent has 0.002, child has 0.001, keeping parent value
++integrator: parent has 0, child has 3, keeping parent value
++
+diff --git a/duckling/src/mjlab_microduck/robot/duckling/robot_walk.xml b/duckling/src/mjlab_microduck/robot/duckling/robot_walk.xml
+index 14ff43b..59e62e6 100644
+--- a/duckling/src/mjlab_microduck/robot/duckling/robot_walk.xml
++++ b/duckling/src/mjlab_microduck/robot/duckling/robot_walk.xml
+@@ -62,7 +62,7 @@
+       <site name="imu" group="3" pos="0 0 0.02" size="0.002"/>
+       <geom name="body" class="visual" type="mesh" mesh="body" pos="0 0 -0.06" mass="0.0101302"/>
+       <geom name="body_armature" class="visual" type="mesh" mesh="body_armature" pos="0 0 -0.06" mass="0.00802604"/>
+-      <geom name="batterij" class="part" type="sphere" size="0.003" pos="0.009435 -3.3e-05 0.021085" mass="0.0085"/>
++      <geom name="batterij" class="part" type="sphere" size="0.003" pos="0.009435 0.007751 0.021085" mass="0.0125"/>
+       <geom name="servo_yaw_rechts" class="visual_dark" type="mesh" mesh="servo_yaw_rechts" pos="0 0 -0.06" mass="0.0041"/>
+       <geom name="servo_yaw_links" class="visual_dark" type="mesh" mesh="servo_yaw_links" pos="0 0 -0.06" mass="0.0041"/>
+       <geom name="servo_neck" class="visual_dark" type="mesh" mesh="servo_neck" pos="0 0 -0.06" mass="0.0041"/>
