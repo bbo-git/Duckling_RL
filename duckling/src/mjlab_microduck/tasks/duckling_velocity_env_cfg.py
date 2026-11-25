@@ -1492,9 +1492,9 @@ def make_duckling_velocity_env_cfg(play: bool = False, rough: bool = False) -> M
     act_cfg.clip = {k: (math.radians(lo), math.radians(hi)) for k, (lo, hi) in JOINT_TARGET_RANGE_DEG.items()}
     cfg.actions["joint_pos"] = FilteredJointPositionActionCfg(
         **{f: getattr(act_cfg, f) for f in act_cfg.__dataclass_fields__})
-    cfg.rewards["target_rate"] = RewardTermCfg(func=target_rate, weight=-2.0)
+    cfg.rewards["target_rate"] = RewardTermCfg(func=target_rate, weight=-3.0)   # 2026-11-25: -2 -> -3 (450 liep 'druk')
     cfg.rewards["head_target_rate"] = RewardTermCfg(func=head_target_rate, weight=-6.0)
-    cfg.rewards["target_jerk"] = RewardTermCfg(func=target_jerk, weight=-1.0)   # 2026-11-01   # 2026-10-31: kop rustiger
+    cfg.rewards["target_jerk"] = RewardTermCfg(func=target_jerk, weight=-4.0)   # 2026-11-25: -1 -> -4; jouw loopje kost dan ~0.04/stap, ruis 1-4   # 2026-11-01   # 2026-10-31: kop rustiger
     # 2026-11-01: trunk_roll_rate (-0.3) eruit: 300 kon zijn voet niet meer optillen (10 pasjes/s van 2 mm):
     # zonder enkel-roll moet de romp waggelen om het gewicht te verplaatsen. Nu: waggelen zoals jouw loopje.
     cfg.rewards["trunk_waddle"] = RewardTermCfg(func=trunk_waddle, weight=2.0)
@@ -1552,6 +1552,8 @@ def make_duckling_velocity_env_cfg(play: bool = False, rough: bool = False) -> M
         R["com_forward"].weight = 2.0
         R["stand_still"] = RewardTermCfg(func=stand_still, weight=3.0)
         R["flat_feet"] = RewardTermCfg(func=flat_feet, weight=1.0)
+        # 2026-11-25: wiebelen in stilstand weer bestraffen (stond sinds 15 okt uit, ook bij 1150)
+        R["stand_action_rate"] = RewardTermCfg(func=stand_action_rate, weight=-2.0)
 
     # --- head pose commands for Duckling's joint ranges
     # Curricula (restored 2026-10-13): a fresh run must not start with the full head range
