@@ -143,3 +143,14 @@ Regel: één verandering per run waar het kan.
 2. Fysica-check zonder netwerk (lift.py / meet.py): voet echt los, zool plat, geen zoolrand in de vloer, zwaartepunt-verloop.
 3. Pas dan EEN training, met een klein vast beloningspakket; meten bij 150/300 met dezelfde meetlat (voet los per pas = 1,
    voethoogte, vooruit per pas, zwaartepunt t.o.v. de standvoet, romp-gyro). Niet elke run iets anders.
+
+## 2026-11-26 middag — STAP-ROOSTER (ontworpen met Jairo in de viewer)
+- tools/stap_gen.py: pas uit (bijna) gebalanceerde standen met platte zolen: leunen via heup-roll (zwaartepunt ~10 mm opzij,
+  net binnen de zoolrand), vloeiend afzetten (hiel op over de teen) en zwaaien (0.24 s, voet 20 mm in het ontwerp, ~10 echt),
+  teen op en landen op de hak, afrollen, terug naar het midden, 1 s pauze. Om en om. Zonder netwerk (servo 1.6x): valt niet,
+  geen bounce; na het landen komt de standvoet nog ~0.08 s los (gewicht schiet door) - aan het netwerk.
+  Hiel-landing + stoppen kan alleen als het zwaartepunt bij het landen niet voor de voet staat; afrollen van de achterste voet
+  na het stoppen valt open-loop om (opties stand_rol / stand_duw / breed staan uit).
+- tools/stap_speler.py: open-loop afspelen met fysica (servo 1.6x standaard). tools/stap_grid.py: naar trainingsrooster
+  grids/gait_grid_stap_v1.npz (alle vooruit-opdrachten = deze pas, 4.5 mm/s = 5 %; snelheidsknoop 0.02; walk_s0 0.02; com_ref).
+- Training (DUCK_GRID standaard stap_v1): pasjes 1-2 per keer op 5 %, 400: tot 4, 800: tot 8. Rest van de beloningen = v11.
