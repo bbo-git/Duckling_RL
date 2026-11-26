@@ -559,7 +559,8 @@ def main():
     ap.add_argument("--vx", type=float, default=0.0)
     ap.add_argument("--wz", type=float, default=0.0)
     ap.add_argument("--speed", type=float, default=1.0, help="afspeelsnelheid (2 = dubbel)")
-    ap.add_argument("--geen-rust", action="store_true", help="policy ook bij stilstand (geen rust-modus)")
+    ap.add_argument("--geen-rust", action="store_true", help="(standaard sinds 26 nov) policy ook bij stilstand")
+    ap.add_argument("--rust", action="store_true", help="rust-modus: bij stilstand netwerk uit, HOME vasthouden")
     ap.add_argument("--oefen", nargs="*", type=float, default=None, metavar="X",
                     help="rust, pasje, rust, pasje... : --oefen [passen] [snelheid] [rust_s] (standaard 1 0.25 1.5)")
     ap.add_argument("--residu", action="store_true",
@@ -585,7 +586,7 @@ def main():
         HOME_POS_DEG.update({"hip_pitch": -11.8, "knee": -8.6, "ankle": -20.3})
         globals()["SPAWN_Z"] = 0.059
     pol = Policy(a.onnx)
-    REST_MODE[0] = not a.geen_rust
+    REST_MODE[0] = a.rust   # 2026-11-26 (Jairo): netwerk ook aan in rust, standaard
     styled = pol.n_in == 63 + len(STYLES)
     grids = [GridClock(p) for _, p in STYLES] if styled else None
     grid = GridClock(a.grid) if a.grid else (grids[0] if styled else None)
