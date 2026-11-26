@@ -39,6 +39,6 @@ Regel: één verandering per run waar het kan.
   (kop 0.20). Was: HOME + uitvoer, doelen tot +-4 rad = aan/uit-sturing tegen de grenzen.
 - Het loopje alleen (uitvoer 0, open-loop in de simulatie): staat, 50 % -> op de plaats, 100 % -> +195 mm in 8 s.
 - Player en keuring: --residu. Firmware: volgt als de training werkt.
-- Fase "pasjes" (DUCK_FASE, standaard): 0-35 % vooruit, niet draaien, opdracht elke 1.5-4 s, 40 % stilstaan.
+- Fase "pasjes" (DUCK_FASE, standaard): 20-50 % vooruit (pas 4.5-11 mm, loopje ~4 passen/s), start vanuit HOME 70 %, duwtjes 0.1 m/s, niet draaien, opdracht elke 1.5-4 s, 40 % stilstaan.
   Daarna fase "lopen" (DUCK_FASE=lopen ... resume): 0-100 % + draaien.
 - Firmware: `passen <n> [f]` voor losse pasjes op de eend.

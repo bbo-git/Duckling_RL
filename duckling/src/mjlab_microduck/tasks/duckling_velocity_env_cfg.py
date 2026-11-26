@@ -60,7 +60,7 @@ STYLES = [   # (naam, rooster in robot/duckling/grids/)
 STYLE_PROBS = (1.0, 0.0)   # 2026-11-19: eerst alleen "normaal" (one-hot blijft 2 lang: firmware ongewijzigd)
 # Taak: "lopen" (snelheidscommando's, eerst trainen) of "volgen" (persoon volgen, fine-tune daarna)
 TASK = os.environ.get("DUCK_TASK", "lopen")
-# 2026-11-26 (Jairo): FASE binnen "lopen". "pasjes" = eerst losse pasjes: 0-35 % vooruit, niet draaien, vaak
+# 2026-11-26 (Jairo): FASE binnen "lopen". "pasjes" = eerst losse pasjes: 20-50 % vooruit, niet draaien, vaak
 # stoppen/starten (opdracht elke 1.5-4 s, 40 % stilstaan). "lopen" = 0-100 % + draaien (hervatten vanaf pasjes).
 FASE = os.environ.get("DUCK_FASE", "pasjes")
 # 2026-10-29: GEDRAG - in dit deel van de envs komen vx, wz en het kopcommando uit de toestandsmachine
@@ -1600,10 +1600,19 @@ def make_duckling_velocity_env_cfg(play: bool = False, rough: bool = False) -> M
         cmd.ranges.lin_vel_x = (0.0, 1.0)
         cmd.rel_turn_in_place_envs = 0.3   # 2026-10-30: 0.1 -> 0.2, 2026-10-31: -> 0.3 (gedrag draait veel op de plaats)
         if FASE == "pasjes":
-            cmd.ranges.lin_vel_x = (0.0, 0.35)
+            # 2026-11-26: 20-50 % (was 0-35 %). Het loopje houdt ~4 passen/s; de snelheid zit in de paslengte:
+            # 0-20 % = 0-4.5 mm, trappelen op de plaats. 20-50 % = echte pasjes van 4.5-11 mm. Stilstaan komt uit
+            # de stilsta-envs (40 %).
+            cmd.ranges.lin_vel_x = (0.2, 0.5)
             cmd.ranges.ang_vel_z = (0.0, 0.0)
             cmd.rel_turn_in_place_envs = 0.0
             cmd.resampling_time_range = (1.5, 4.0)
+            # meestal starten vanuit HOME, zoals op tafel (was 80 % midden in een pas) en mildere duwtjes
+            cfg.events["reset_to_reference"].params["prob"] = 0.3
+            if "push_robot" in cfg.events:
+                r = 0.10
+                cfg.events["push_robot"].params["velocity_range"] = {"x": (-r, r), "y": (-r, r)}
+                cfg.events["push_robot"].interval_range_s = (4.0, 8.0)
         cfg.commands["twist"] = BehaviorVelocityCommandCfg(**vars(cmd))
         cfg.commands["head_pose"] = _BehaviorHeadPoseCfg(**vars(cfg.commands["head_pose"]))
         for name in ("follow_distance", "follow_bearing", "turn_toward", "push_off", "back_off"):

@@ -15,6 +15,7 @@ Gebruik (vanuit src/mjlab_microduck/robot/duckling, zoals de players):
   python ../../../../tools/keuring.py ../../../../../onnx/duckling_walk_650.onnx [meer.onnx ...]
   python ../../../../tools/keuring.py 650 1150          (kort: getal = onnx/duckling_walk_<n>.onnx)
   python ../../../../tools/keuring.py --residu 300      (netwerken met residu-acties, vanaf 26 nov)
+  python ../../../../tools/keuring.py --residu --pasjes 300   (fase "pasjes": tot 30 %, start/stop, geen draaien)
 """
 import os
 import sys
@@ -42,12 +43,39 @@ GRENS = {
 }
 
 _BASE = {id(d): dict(d) for d in (DS.ES9051, DS.DIFF_HIP)}
-RESIDU = ["--residu" in sys.argv]   # 2026-11-26: netwerken met residu-acties (vanaf de run van 26 nov)
+RESIDU = ["--residu" in sys.argv]
+FASE_PASJES = ["--pasjes" in sys.argv]   # alleen tot 30 % keuren (fase "pasjes"), geen draaien   # 2026-11-26: netwerken met residu-acties (vanaf de run van 26 nov)
 _GRIDS = None
 
 
 def _yaw(q):
     return 2.0 * np.arctan2(q[3], q[0])
+
+
+def pasjes(onnx, f=0.3, loop_s=2.0):
+    """2026-11-26: start vanuit HOME, 1 s staan, loop_s lopen op f, dan 4 s staan. Meet: valt hij, hoeveel
+    schuift hij na de stop nog (mm) en draait hij na de stop (gr)."""
+    global _GRIDS
+    if _GRIDS is None:
+        _GRIDS = [P.GridClock(p) for _, p in P.STYLES]
+    pol = P.Policy(onnx)
+    r = P.Duckling("scene_walk.xml", grid=_GRIDS[0])
+    r.gait_clock, r.styled, r.grids = True, True, _GRIDS
+    r.set_style(0)
+    r.residual = RESIDU[0]
+    t_stop = 1.0 + loop_s
+    p_stop = None
+    for k in range(int((t_stop + 4.0) / 0.02)):
+        t = k * 0.02
+        tw = np.array([f * V100 if 1.0 <= t < t_stop else 0.0, 0.0, 0.0])
+        r.step(pol(r.obs(tw, np.zeros(4))), tw)
+        if p_stop is None and t >= t_stop + 0.5:
+            p_stop = (r.d.qpos[:2].copy(), _yaw(r.d.qpos[3:7]))
+        if r.fallen:
+            return dict(val=True, t=t)
+    d = np.linalg.norm(r.d.qpos[:2] - p_stop[0]) * 1000
+    dy = np.degrees(abs(np.arctan2(np.sin(_yaw(r.d.qpos[3:7]) - p_stop[1]), np.cos(_yaw(r.d.qpos[3:7]) - p_stop[1]))))
+    return dict(val=False, na_stop_mm=d, na_stop_gr=dy)
 
 
 def proef(onnx, vx=0.0, wz=0.0, kracht=1.0):
@@ -105,7 +133,15 @@ def keur(onnx):
         regel("staan", "%+.0f mm" % s["vooruit_mm"], abs(s["vooruit_mm"]) <= GRENS["staan_mm"])
         regel("heup-yaw (staan)", "%+.1f gr" % s["heupyaw"], abs(s["heupyaw"]) <= GRENS["heupyaw_gr"])
         regel("onrust (staan)", "%.1f gr/stap" % s["onrust"], True)
-    for frac in (0.5, 1.0):
+    for f, ls in ((0.3, 1.0), (0.3, 3.0)):
+        pj = pasjes(onnx, f, ls)
+        lab = "pasjes %.0f s op %.0f %%" % (ls, f * 100)
+        if pj["val"]:
+            regel(lab, "VALT (%.1f s)" % pj["t"], False)
+        else:
+            regel(lab, "na stop %.0f mm / %.0f gr" % (pj["na_stop_mm"], pj["na_stop_gr"]),
+                  pj["na_stop_mm"] <= 15 and pj["na_stop_gr"] <= 5)
+    for frac in ((0.3, 0.5, 1.0) if not FASE_PASJES[0] else (0.3,)):
         l = proef(onnx, vx=frac * V100)
         lab = "loop %.1f" % frac
         if l["val"]:
@@ -113,20 +149,23 @@ def keur(onnx):
             continue
         f = l["v"] / (frac * V100)
         regel(lab, "%.1f cm/s = %.0f %%" % (l["v"] * 100, f * 100), f >= GRENS["loop_frac"])
-        if frac == 0.5:
+        if frac == (0.3 if FASE_PASJES[0] else 0.5):
             regel("heup-yaw (lopen)", "%+.1f gr" % l["heupyaw"], abs(l["heupyaw"]) <= GRENS["heupyaw_gr"])
             regel("onrust (lopen)", "%.1f gr/stap" % l["onrust"], True)
-    w = proef(onnx, wz=np.radians(20.0))
-    if w["val"]:
-        regel("draai 20 gr/s", "VALT", False)
-    else:
-        regel("draai 20 gr/s", "%+.0f gr/s" % w["w_gr"], w["w_gr"] / 20.0 >= GRENS["draai_frac"])
-    for kracht, lab in ((1.6, "loop 0.5, servo 1.6x"), (0.7, "loop 0.5, servo 0.7x")):
-        k = proef(onnx, vx=0.5 * V100, kracht=kracht)
+    if not FASE_PASJES[0]:
+        w = proef(onnx, wz=np.radians(20.0))
+        if w["val"]:
+            regel("draai 20 gr/s", "VALT", False)
+        else:
+            regel("draai 20 gr/s", "%+.0f gr/s" % w["w_gr"], w["w_gr"] / 20.0 >= GRENS["draai_frac"])
+    fk = 0.3 if FASE_PASJES[0] else 0.5
+    for kracht in (1.6, 0.7):
+        lab = "loop %.1f, servo %.1fx" % (fk, kracht)
+        k = proef(onnx, vx=fk * V100, kracht=kracht)
         if k["val"]:
             regel(lab, "VALT", False)
         else:
-            f = k["v"] / (0.5 * V100)
+            f = k["v"] / (fk * V100)
             regel(lab, "%.0f %%" % (f * 100), f >= GRENS["sterk_frac"])
     for d in (DS.ES9051, DS.DIFF_HIP):
         d["stall"] = _BASE[id(d)]["stall"]
