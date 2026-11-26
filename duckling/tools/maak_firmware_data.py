@@ -50,6 +50,8 @@ def main():
     ap.add_argument("--calib", required=True)
     ap.add_argument("--uit", default=".")
     ap.add_argument("--anim-snelheid", type=float, default=0.5, help="loopje voor 'anim' (fractie van v100)")
+    ap.add_argument("--snelheden", default="", help="komma-lijst: alleen deze snelheden naar de firmware")
+    ap.add_argument("--bochten", default="", help="komma-lijst: alleen deze bochten (graden)")
     ap.add_argument("--residu", action="store_true",
                     help="2026-11-26: netwerk met residu-acties (doel = loopje uit het rooster + RES x actie)")
     a = ap.parse_args()
@@ -74,7 +76,15 @@ def main():
             f.write(arr(f"L{i}_W", w) + arr(f"L{i}_B", b))
 
     # --- gangritme (cyclusduur per snelheid x bocht) + een loopje voor de animatietest
-    d = np.load(a.grid)
+    d = dict(np.load(a.grid, allow_pickle=True))
+    # 2026-11-26: alleen een deel van de assen naar de firmware (stap-rooster: 4.5 s cyclus past anders niet in RAM)
+    if a.snelheden or a.bochten:
+        si_ = [int(np.argmin(np.abs(d["speeds"] - float(x)))) for x in a.snelheden.split(",")] if a.snelheden else list(range(len(d["speeds"])))
+        ti_ = [int(np.argmin(np.abs(d["turns"] - float(x)))) for x in a.bochten.split(",")] if a.bochten else list(range(len(d["turns"])))
+        for k in ("length", "cycle_s", "joint_pos", "vel"):
+            d[k] = np.asarray(d[k])[si_][:, ti_]
+        d["speeds"] = np.asarray(d["speeds"])[si_]; d["turns"] = np.asarray(d["turns"])[ti_]
+        print("firmware-rooster: snelheden", d["speeds"], "bochten", d["turns"])
     S, Wt, Y = d["speeds"], d["turns"], d["sides"]
     yi = int(np.argmin(np.abs(Y)))
     cyc = d["cycle_s"][:, :, yi]
