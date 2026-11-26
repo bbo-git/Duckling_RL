@@ -1589,6 +1589,14 @@ def residual_l2(env) -> torch.Tensor:
     return torch.mean(torch.square(a[:, legs]), -1)
 
 
+def hip_roll_residual(env) -> torch.Tensor:
+    """2026-11-26 avond (stap v3, run 250 op de echte eend): heup-roll bovenop het rooster klein houden. 250 wiegde
+    +-12 gr heup-roll (ontwerp +-6) om de voet los te krijgen, i.p.v. de knie te gebruiken. Alleen heup-roll: de knie
+    blijft vrij (algemene rust-termen maakten hem eerder passief)."""
+    a = env.action_manager.action
+    return torch.mean(torch.square(a[:, [1, 10]]), -1)
+
+
 def stand_action_rate(env) -> torch.Tensor:
     """Action change per step, only for envs told to stand still: at rest the targets
     must not wiggle (2026-10-13: ankles and head kept jittering)."""
@@ -1715,6 +1723,8 @@ def make_duckling_velocity_env_cfg(play: bool = False, rough: bool = False) -> M
     R["stand_action_rate"] = RewardTermCfg(func=stand_action_rate, weight=-1.0)   # at rest: no wiggling
     if RESIDUAL and PJ:
         R["residual_l2"] = RewardTermCfg(func=residual_l2, weight=-0.5 if ROOSTER == "dyn" else -4.0)
+        if ROOSTER == "dyn":
+            R["hip_roll_residual"] = RewardTermCfg(func=hip_roll_residual, weight=-3.0)   # 2026-11-26 avond
     if ROOSTER == "dyn":
         # 2026-11-26 v11: trunk_calm, soft_landing en swing_taps eruit - maakten hem passief (schuifelen)
         R["both_feet_air"] = RewardTermCfg(func=both_feet_air, weight=-3.0)
