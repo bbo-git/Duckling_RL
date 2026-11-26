@@ -91,6 +91,7 @@ class Oefen:
     def __init__(self, n, f, rust_s, v100):
         self.n, self.f, self.rust, self.v100 = n, f, rust_s, v100
         self.state, self.t, self.left, self.half = 0, 1.0, 0, None
+        self.last = -1   # 2026-11-26: laatst gelopen halve cyclus -> volgende reeks met de andere voet (= training)
 
     def vx(self, phase, dt):
         half = int(np.floor(phase * 2))
@@ -100,12 +101,13 @@ class Oefen:
             self.t -= dt
             if self.t <= 0:
                 self.state, self.left = 1, self.n
-        elif self.state == 1 and crossed:
+        elif self.state == 1 and crossed and half != self.last:
             self.state = 2
             print("pasje(s)...")
         elif self.state == 2 and crossed:
             self.left -= 1
             if self.left <= 0:
+                self.last = 1 - half
                 self.state, self.t = 0, self.rust
                 print("rust")
         return self.f * self.v100 if self.state == 2 else 0.0       # hold HOME when told to stand still (see run_viewer)

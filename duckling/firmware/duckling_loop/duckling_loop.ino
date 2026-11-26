@@ -64,6 +64,7 @@ static uint32_t mode_t0 = 0;
 static float tw_goal[3] = {0, 0, 0}, tw[3] = {0, 0, 0};
 static uint32_t tw_stop_ms = 0;
 static int steps_left = 0; static float step_ph = 0;
+static bool step_wait = false; static int last_half = -1; static float step_v = 0;   // 2026-11-26: = training: start op een halve cyclus, om en om
 static int oefen_left = 0, oefen_n = 1; static float oefen_f = 0.25f, oefen_rust = 1.5f; static uint32_t oefen_t = 0;   // 2026-11-26: oefen   // 2026-11-26: passen <n>: na n passen (halve gangcycli) staan   // 2026-11-26: loop/draai met duur: daarna vanzelf opdracht 0 (staan)
 // 2026-11-18: zoals tools/duckling_gedrag.py: stilstaan = HOME vasthouden (rust), netwerk alleen bij lopen
 // (in 0,25 s erin, in 1 s eruit); zitten/opstaan = vaste beweging (min-jerk) naar de zithouding zit_v2.
@@ -312,7 +313,7 @@ static void set_mode(Mode m) {
   }
   if (m != THUIS) wip_deg = 0;
   if (m == SLAP) servo_limp();
-  if (m != NET) { oefen_left = 0; steps_left = 0; tw_stop_ms = 0; }   // geen schema meer na slap/thuis/val
+  if (m != NET) { oefen_left = 0; steps_left = 0; tw_stop_ms = 0; step_wait = false; last_half = -1; }   // geen schema meer na slap/thuis/val
   if (mode == NET && m != NET) log_frozen = true;                  // log van de netwerk-run bewaren (ook na slap/knop)
   if (m == NET && mode != NET) { log_n = 0; log_i = 0; log_frozen = false; }   // nieuwe run: nieuw log
   if ((m == THUIS || m == ANIM || m == NET) && mode == SLAP) {
@@ -424,7 +425,7 @@ static void command(String s) {
     int n = (sp < 0 ? r : r.substring(0, sp)).toInt(); float f = sp < 0 ? 0.3f : r.substring(sp + 1).toFloat();
     if (n <= 0) { Serial.println("gebruik: passen <n> [f], bv. passen 3"); return; }
     steps_left = n; tw_stop_ms = 0; want_sit = false;
-    tw_goal[0] = clampf(f, 0.0f, 1.0f) * V100; tw_goal[2] = 0;
+    step_wait = true; step_v = clampf(f, 0.0f, 1.0f) * V100; tw_goal[0] = tw_goal[2] = 0;
     if (mode != NET) set_mode(NET);
     step_ph = duck.phase;
     Serial.printf("passen: %d stuks op %.0f %%\n", n, f * 100);
@@ -540,10 +541,15 @@ void loop() {
   } else if (mode == NET) {
     if (steps_left > 0 && rest_b > 0.5f) {   // een pas = een halve gangcyclus (fase door 0 of 0.5)
       float ph = duck.phase;
-      if (floorf(ph * 2) != floorf(step_ph * 2) || ph < step_ph) {
+      int h = (int)floorf(ph * 2);
+      bool crossed = h != (int)floorf(step_ph * 2) || ph < step_ph;
+      if (step_wait) {   // = training: pas beginnen op de grens (gewicht verdeeld), met de andere voet dan de vorige keer
+        if (crossed && h != last_half) { step_wait = false; tw_goal[0] = step_v; tw_goal[2] = 0; }
+      } else if (crossed) {
         steps_left--;
         Serial.printf("pas (nog %d)\n", steps_left);
         if (steps_left == 0) {
+          last_half = 1 - h;
           tw_goal[0] = tw_goal[2] = 0;
           if (oefen_left > 0) { oefen_t = millis() + (uint32_t)(oefen_rust * 1000); Serial.printf("rust (nog %d keer)\n", oefen_left); }
           else Serial.println("passen klaar: staan");
@@ -553,7 +559,7 @@ void loop() {
     } else step_ph = duck.phase;
     if (oefen_left > 0 && steps_left == 0 && oefen_t && (int32_t)(millis() - oefen_t) >= 0) {   // volgende ronde
       oefen_t = 0; oefen_left--; steps_left = oefen_n; step_ph = duck.phase;
-      tw_goal[0] = oefen_f * V100; tw_goal[2] = 0;
+      step_wait = true; step_v = oefen_f * V100; tw_goal[0] = tw_goal[2] = 0;
     }
     if (tw_stop_ms && (int32_t)(millis() - tw_stop_ms) >= 0) {
       tw_stop_ms = 0; tw_goal[0] = tw_goal[2] = 0; Serial.println("tijd om: staan");
