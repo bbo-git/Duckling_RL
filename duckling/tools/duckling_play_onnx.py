@@ -77,7 +77,34 @@ HEAD_LIMITS = (0.25, 0.25, 1.10, 0.15)  # neck_pitch, head_pitch, head_yaw, head
 
 
 NJ = 14
-REST_MODE = [True]       # hold HOME when told to stand still (see run_viewer)
+REST_MODE = [True]
+OEFEN = {}   # 2026-11-26: --oefen: rust, n passen, rust, ... (= firmware 'oefen' en het pasjes-schema van de training)
+
+
+class Oefen:
+    """Rust (rust_s) -> wachten op een halve gangcyclus -> n passen op f x v100 -> rust -> ..."""
+
+    def __init__(self, n, f, rust_s, v100):
+        self.n, self.f, self.rust, self.v100 = n, f, rust_s, v100
+        self.state, self.t, self.left, self.half = 0, 1.0, 0, None
+
+    def vx(self, phase, dt):
+        half = int(np.floor(phase * 2))
+        crossed = self.half is not None and half != self.half
+        self.half = half
+        if self.state == 0:
+            self.t -= dt
+            if self.t <= 0:
+                self.state, self.left = 1, self.n
+        elif self.state == 1 and crossed:
+            self.state = 2
+            print("pasje(s)...")
+        elif self.state == 2 and crossed:
+            self.left -= 1
+            if self.left <= 0:
+                self.state, self.t = 0, self.rust
+                print("rust")
+        return self.f * self.v100 if self.state == 2 else 0.0       # hold HOME when told to stand still (see run_viewer)
 REST_FADE_S = 1.0   # volg17: 0.5 dropped it mid-correction (fell 4/52)
 # Sliders at the bottom of the viewer's Control panel: name, min, max
 SLIDERS = (("vooruit_cm_s", 0.0, 12.0), ("draai_gr_s", -34.0, 34.0),
@@ -498,6 +525,8 @@ def run_viewer(robot, pol, speed=1.0, vx=0.0, wz=0.0):
                     flags["reset"] = False
                     shown = to_sliders()
                 twist = np.array([cmd["vx"], cmd["vy"], cmd["wz"]])
+                if OEFEN.get("o") is not None:
+                    twist = np.array([OEFEN["o"].vx(robot.phase, dt), 0.0, 0.0])
                 a = pol(robot.obs(twist, head))
                 # rest mode: with a zero command the policy fades out and the robot just
                 # holds HOME (statically stable: centre of mass 17 mm inside the feet).
@@ -526,6 +555,8 @@ def main():
     ap.add_argument("--wz", type=float, default=0.0)
     ap.add_argument("--speed", type=float, default=1.0, help="afspeelsnelheid (2 = dubbel)")
     ap.add_argument("--geen-rust", action="store_true", help="policy ook bij stilstand (geen rust-modus)")
+    ap.add_argument("--oefen", nargs="*", type=float, default=None, metavar="X",
+                    help="rust, pasje, rust, pasje... : --oefen [passen] [snelheid] [rust_s] (standaard 1 0.25 1.5)")
     ap.add_argument("--residu", action="store_true",
                     help="2026-11-26: netwerk met residu-acties (doel = jouw loopje + bijsturen); vanaf de run van 26 nov")
     ap.add_argument("--grid", default=None,
@@ -562,6 +593,11 @@ def main():
         robot.set_style([n for n, _ in STYLES].index(a.stijl))
         LIMITS["vx"] = (0.0, robot.grid.v100)
         print("stijl:", a.stijl, f"(100% = {robot.grid.v100 * 100:.1f} cm/s); toetsen 1/2 wisselen")
+    if a.oefen is not None:
+        o = list(a.oefen) + [1, 0.25, 1.5][len(a.oefen):]
+        v100 = robot.grid.v100 if robot.grid is not None else 0.09
+        OEFEN["o"] = Oefen(max(1, int(o[0])), float(o[1]), float(o[2]), v100)
+        print(f"oefen: {int(o[0])} pas(sen) op {o[1] * 100:.0f} %, {o[2]:.1f} s rust ertussen (schuifjes doen nu niets)")
     if robot.gait_clock:
         print("loopklok:", f"jouw loopje ({a.grid})" if grid else
               f"Blender-cyclus ({CYCLE_S:g} s) - getraind met jouw loopje? gebruik --grid gait_grid.npz")

@@ -576,9 +576,9 @@ void loop() {
     float act[NJ];
     if (standing) { duck.build_obs(gyro_b, grav, tw, head_cmd); pol.run(duck.obs, duck.act); memcpy(act, duck.act, sizeof(act)); }
     else for (int j = 0; j < NJ; j++) act[j] = 0;
-    float bl[NJ];
-    for (int j = 0; j < NJ; j++) bl[j] = rest_b * act[j] + (1 - rest_b) * sit_amt * CROUCH[j];
-    duck.apply(bl, tw);
+    float bl[NJ], offs[NJ];   // 2026-11-26: netwerk (gewogen) en zithouding apart: bij residu-acties is de actie
+    for (int j = 0; j < NJ; j++) { bl[j] = rest_b * act[j]; offs[j] = (1 - rest_b) * sit_amt * CROUCH[j]; }   // een correctie
+    duck.apply(bl, tw, head_cmd, offs);
     t_infer_us = micros() - a;
     memcpy(q_out, duck.filt, sizeof(q_out));
     servo_write_all(q_out, false);

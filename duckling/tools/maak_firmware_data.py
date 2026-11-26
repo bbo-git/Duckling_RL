@@ -50,6 +50,8 @@ def main():
     ap.add_argument("--calib", required=True)
     ap.add_argument("--uit", default=".")
     ap.add_argument("--anim-snelheid", type=float, default=0.5, help="loopje voor 'anim' (fractie van v100)")
+    ap.add_argument("--residu", action="store_true",
+                    help="2026-11-26: netwerk met residu-acties (doel = loopje uit het rooster + RES x actie)")
     a = ap.parse_args()
     os.makedirs(a.uit, exist_ok=True)
 
@@ -65,6 +67,7 @@ def main():
         f.write("#pragma once\n")
         f.write(f'#define POLICY_NAAM "{os.path.basename(a.onnx)}"\n')
         f.write(f"#define N_OBS {std.size}\n")
+        f.write(f"#define POLICY_RESIDUAL {1 if a.residu else 0}\n#define RES_SCALE_LEG 0.30f\n#define RES_SCALE_HEAD 0.20f\n")
         f.write(arr("OBS_MEAN", W["obs_normalizer._mean"]) + arr("OBS_STD", std))
         for i, (w, b) in enumerate(layers):
             f.write(f"#define L{i}_IN {w.shape[1]}\n#define L{i}_OUT {w.shape[0]}\n")
@@ -90,6 +93,15 @@ def main():
         f.write(f"#define ANIM_SPEED_FRAC {float(S[si]):.3f}f\n")
         f.write(arr("ANIM_Q", anim))
         f.write(arr("J_LO", lo) + arr("J_HI", hi))
+        # 2026-11-26: het hele rooster (zijstap 0) voor de residu-basis, in trainingsvolgorde
+        L = d["length"][:, :, yi]
+        T = int(L.max())
+        cols = [names.index(j) for j in JOINTS]
+        gq = d["joint_pos"][:, :, yi, :T][..., cols]                    # (nS, nW, T, 14)
+        f.write(f"#define GRID_T {T}\n")
+        f.write("static const unsigned char GRID_LEN[%d] = {%s};\n" % (L.size, ",".join(str(int(x)) for x in L.reshape(-1))))
+        f.write(arr("GRID_Q", gq))
+        f.write(arr("STAND_Q", np.asarray(d["stand_joint_pos"])[cols]))
         f.write(arr("J_ALPHA", [ALPHA_HEAD if j in HEAD else ALPHA for j in JOINTS]))
         f.write(arr("J_VEST", [EST_VMAX[key(j)] * EST_SPEED_FRAC for j in JOINTS]))
         f.write("static const char* const J_NAMES[14] = {" + ",".join(f'"{j}"' for j in JOINTS) + "};\n")

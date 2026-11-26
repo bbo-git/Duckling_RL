@@ -73,6 +73,36 @@ static inline float grid_walk(float vx, float vy, float wz) {   // 0 = staan, 1 
   return clampf(m, 0.0f, 1.0f);
 }
 
+// 2026-11-26: residu-basis = jouw loopje bij deze opdracht en fase (= GridClock.base in de player en
+// _GridReference in de training): benen = walk * rooster + (1 - walk) * stilstaan, kop = kijkopdracht + knik.
+static inline void grid_base(float vx, float vy, float wz, float phase, const float head[4], float out[NJ]) {
+  int i, j; float wi, wj;
+  grid_axis(GRID_SPEEDS, N_SPEEDS, vx / V100, &i, &wi);
+  grid_axis(GRID_TURNS_DEG, N_TURNS, wz * 57.29578f, &j, &wj);
+  float q[NJ] = {0};
+  const int a_[4] = {i, i, i + 1, i + 1}, b_[4] = {j, j + 1, j, j + 1};
+  const float w_[4] = {(1 - wi) * (1 - wj), (1 - wi) * wj, wi * (1 - wj), wi * wj};
+  for (int c = 0; c < 4; c++) {
+    int cell = a_[c] * N_TURNS + b_[c];
+    int n = GRID_LEN[cell];
+    float f = phase * n;
+    int i0 = ((int)floorf(f)) % n, i1 = (i0 + 1) % n;
+    float w = f - floorf(f);
+    const float* r0 = GRID_Q + ((size_t)cell * GRID_T + i0) * NJ;
+    const float* r1 = GRID_Q + ((size_t)cell * GRID_T + i1) * NJ;
+    for (int k = 0; k < NJ; k++) q[k] += w_[c] * ((1 - w) * r0[k] + w * r1[k]);
+  }
+  float walk = grid_walk(vx, vy, wz);
+  bool moving = sqrtf(vx * vx + vy * vy) > 0.02f || fabsf(wz) > 0.1f;
+  // kijkopdracht (nek, kop-pitch, kop-yaw, kop-roll) -> gewrichtsvolgorde
+  float hc[NJ] = {0};
+  if (moving && head) { hc[NECK] = head[0]; hc[HPITCH] = head[1]; hc[HYAW] = head[2]; hc[HROLL] = head[3]; }
+  for (int k = 0; k < NJ; k++) {
+    bool is_head = (k == NECK || k == HPITCH || k == HROLL || k == HYAW);
+    out[k] = is_head ? hc[k] + walk * (q[k] - STAND_Q[k]) : walk * q[k] + (1 - walk) * STAND_Q[k];
+  }
+}
+
 // ------------------------------------------------------------------ toestand + een stap
 struct Duck {
   float filt[NJ], est[NJ], est_prev[NJ], last_action[NJ];
@@ -103,12 +133,24 @@ struct Duck {
     o[k++] = style == 1 ? 1.0f : 0.0f;
   }
   // na het netwerk: actie -> servodoelen (filt). = Duckling.step
-  void apply(const float* action, const float twist[3]) {
+  // head: kijkopdracht (residu-basis); offs: extra absolute verschuiving (zitten), mag nullptr zijn.
+  void apply(const float* action, const float twist[3], const float* head = nullptr, const float* offs = nullptr) {
     phase += DT_CTRL / grid_cycle(twist[0], twist[2]);
     phase -= floorf(phase);
+    float base[NJ] = {0};
+#if POLICY_RESIDUAL
+    grid_base(twist[0], twist[1], twist[2], phase, head, base);
+#endif
     for (int j = 0; j < NJ; j++) {
       last_action[j] = action[j];
-      float t = clampf(action[j], J_LO[j], J_HI[j]);           // HOME + actie, geclipt
+#if POLICY_RESIDUAL
+      bool is_head = (j == NECK || j == HPITCH || j == HROLL || j == HYAW);
+      float t = base[j] + (is_head ? RES_SCALE_HEAD : RES_SCALE_LEG) * action[j];   // loopje + bijsturen
+#else
+      float t = action[j];                                                          // HOME + actie
+#endif
+      if (offs) t += offs[j];
+      t = clampf(t, J_LO[j], J_HI[j]);
       filt[j] += J_ALPHA[j] * (t - filt[j]);
       est_prev[j] = est[j];
       float st = J_VEST[j] * DT_CTRL;
@@ -118,7 +160,7 @@ struct Duck {
   void step(Policy& p, const float gyro[3], const float grav[3], const float twist[3], const float head[4]) {
     build_obs(gyro, grav, twist, head);
     p.run(obs, act);
-    apply(act, twist);
+    apply(act, twist, head);
   }
 };
 
