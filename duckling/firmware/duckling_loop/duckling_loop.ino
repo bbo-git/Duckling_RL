@@ -72,6 +72,8 @@ static bool idle_aan = false; static float idle_cur[4] = {0}, idle_goal[4] = {0}
 #define IDLE_RATE 0.6f      // rad/s: rustig draaien
 #define IDLE_SHIFT 0.035f   // rad (~2 gr) heup-roll voor de gewichtsverplaatsing
 #define IDLE_SHIFT_S 6.0f   // s per keer links-rechts-links
+#define IDLE_KAAK 25.0f     // gr snavel open als hij "iets grappigs ziet"
+static float kaak_goal = 0; static uint32_t kaak_dicht = 0; static int kaak_keer = 0;
 static bool step_wait = false; static int last_half = -1; static float step_v = 0;   // 2026-11-26: = training: start op een halve cyclus, om en om
 static int oefen_left = 0, oefen_n = 1; static float oefen_f = 0.25f, oefen_rust = 1.5f; static uint32_t oefen_t = 0;   // 2026-11-26: oefen   // 2026-11-26: passen <n>: na n passen (halve gangcycli) staan   // 2026-11-26: loop/draai met duur: daarna vanzelf opdracht 0 (staan)
 // 2026-11-18: zoals tools/duckling_gedrag.py: stilstaan = HOME vasthouden (rust), netwerk alleen bij lopen
@@ -252,9 +254,10 @@ static void cam_send() {   // 50 Hz: kopstand + draaien van het lijf + wifi-wens
 }
 
 // ------------------------------------------------------------------ servo's
+static float kaak_deg = 0.0f;   // 2026-11-26: snavel open (+, graden); rondkijken opent hem soms
 static void servo_write_all(const float q[NJ], bool stagger) {
   float us[N_SERVO];
-  joints_to_us(q, 0.0f, us);
+  joints_to_us(q, kaak_deg, us);
   for (int n = 0; n < N_SERVO; n++) {
     pwm_set_gpio_level(n, (uint16_t)(us[n] + 0.5f));
     if (stagger && !servo_on[n]) delay(ENABLE_STAGGER_MS);   // niet alles tegelijk: stroompiek
@@ -611,6 +614,10 @@ void loop() {
         idle_goal[1] = IDLE_PITCH * (2.0f * random(1000) / 1000.0f - 1.0f);               // kop-pitch
         idle_goal[2] = 0.08f * (2.0f * random(1000) / 1000.0f - 1.0f);                    // kop-roll (scheef, nieuwsgierig)
         if (random(4) == 0) idle_goal[0] = idle_goal[1] = idle_goal[2] = 0;               // soms weer recht vooruit
+        else if (random(3) == 0) {   // iets grappigs gezien: kopje scheef, snavel 1-3x open
+          idle_goal[2] = (random(2) ? 1 : -1) * 0.12f; idle_goal[1] = 0.10f;
+          kaak_keer = 1 + random(3); kaak_dicht = millis() + 400;
+        }
         idle_next = millis() + 2000 + random(3000);
       }
       for (int i = 0; i < 3; i++) {
@@ -624,6 +631,15 @@ void loop() {
       offs[HPITCH] += 0.6f * idle_cur[1]; offs[NECK] += 0.4f * idle_cur[1];
       offs[HROLL] += idle_cur[2];
       offs[LHR] += sh; offs[RHR] -= sh;    // beide benen dezelfde kant op = romp schuift opzij
+      // snavel: open-dicht-open (snaterend), dan dicht; bij lopen altijd dicht
+      if (!idle) kaak_keer = 0;
+      if (kaak_keer > 0 && (int32_t)(millis() - kaak_dicht) >= 0) {
+        kaak_goal = kaak_goal > 1 ? 0 : IDLE_KAAK;
+        if (kaak_goal == 0) kaak_keer--;
+        kaak_dicht = millis() + (kaak_goal > 0 ? 250 + random(250) : 200);
+      }
+      if (kaak_keer == 0) kaak_goal = 0;
+      kaak_deg += clampf(kaak_goal - kaak_deg, -200.0f * DT_CTRL, 200.0f * DT_CTRL);
     }
     duck.apply(bl, tw, head_cmd, offs);
     t_infer_us = micros() - a;
