@@ -162,3 +162,9 @@ Regel: één verandering per run waar het kan.
 - CORRECTIE (zelfde avond): v2 stuiterde in de player (Jairo). Mijn test had een oude kopie van stap_gen gebruikt. Met de juiste: v2 valt bij 1.0x en heeft 16 voet-los i.p.v. 8. Alleen v1 (10,5 mm, heup-roll 20) is schoon. Kop-roll helpt niet voor het zwaartepunt (getest), heup-roll max 20 (Jairo). Terug naar v1 als standaard; vertraging tot 60 ms blijft.
 - v3 (Jairo: statische balans vergeten, rustige stapjes in dynamische balans): com_y 3 mm, zwaai 0,15 s, lift 16 mm, fall_y 0.8. Open lus: staat bij 0.7-2.0x, schoon (2x voet-los per pas, zoals v1), romp-roll ~5 gr (v1 ~20), heup-roll 6 gr, ~9 mm vooruit per pas. Gezocht over 104 varianten.
 - Run v3: 100 echt niet gevallen (romp +-5 gr, knie ~10). 250 echt niet gevallen maar wiegt: heup-roll +-12 (ontwerp 6), romp -10..+13, knie niet meer. Nieuwe run (Jairo: opnieuw) met hip_roll_residual -3 (alleen heup-roll-residu).
+
+## VOLGENDE KEER (27 nov): doorlopend loopje
+- Jairo: verder met een doorlopend loopje in een vast ritme (natuurlijker voor deze maat: valtijd ~80 ms, servo 40-60 ms achter).
+- Uitgangspunt: stap v3 (3 mm opzij, zwaai 0,15 s, romp ~5 gr) zonder pauzes: hold_s 0, back_s kort; cadans zoeken in de sim (open lus, 0.7-2.0x), daarna rooster met snelheid als parameter.
+- Training: hip_roll_residual -3 en vertraging tot 60 ms houden. Laatste UF2: netwerk 150 (stap v3 + heup-roll-straf), niet gevallen.
+- Grip: dun rubber/antislip onder de zolen (geen dik foam); voet slipt in yaw bij afzetten.
