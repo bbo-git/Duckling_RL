@@ -68,7 +68,8 @@ PJ = ROOSTER in ("pasje", "dyn")
 if ROOSTER == "pasje":
     STYLES = [("normaal", "gait_grid_pasje_v4.npz"), ("parmantig", "gait_grid_pasje_v4.npz")]
 elif ROOSTER == "dyn":
-    STYLES = [("normaal", "gait_grid_pasje_v5.npz"), ("parmantig", "gait_grid_pasje_v5.npz")]
+    # v6 (Jairo: "langzamer en rustiger"): 0.37 s per pas (was 0.25), pas 6.7 mm bij 20 %, 10 mm bij 30 %
+    STYLES = [("normaal", "gait_grid_pasje_v6.npz"), ("parmantig", "gait_grid_pasje_v6.npz")]
 STYLE_PROBS = (1.0, 0.0)   # 2026-11-19: eerst alleen "normaal" (one-hot blijft 2 lang: firmware ongewijzigd)
 # Taak: "lopen" (snelheidscommando's, eerst trainen) of "volgen" (persoon volgen, fine-tune daarna)
 TASK = os.environ.get("DUCK_TASK", "lopen")
@@ -348,7 +349,7 @@ class BehaviorVelocityCommand(StyleVelocityCommand):
         PASJES_STAGES = [(0, 4, 0.06, 0.09), (1250, 4, 0.06, 0.12), (1500, 8, 0.06, 0.16), (1800, 8, 0.06, 0.20)]
     if ROOSTER == "dyn":
         # v5: 20 % = pas 4.5 mm, 30 % = 6.7 mm, 45 % = 10 mm (cadans van het loopje, ~0.25 s per pas)
-        PASJES_STAGES = [(0, 4, 0.20, 0.30), (400, 4, 0.20, 0.45), (800, 8, 0.20, 0.60)]
+        PASJES_STAGES = [(0, 4, 0.20, 0.30), (400, 4, 0.20, 0.40), (800, 8, 0.20, 0.50)]   # v6: 6.7-13 mm per pas
 
     def _pasjes(self):
         n_env, dev = self.num_envs, self.device
@@ -1433,6 +1434,18 @@ def head_command_when_moving(env, command_name: str = "head_pose") -> torch.Tens
     return cmd * _moving(env).float()[:, None]
 
 
+def trunk_calm(env) -> torch.Tensor:
+    """2026-11-26: romp-draaisnelheid (roll en pitch, rad/s)^2 - de gyro-pieken van 3 rad/s zijn de schok."""
+    w = env.scene["robot"].data.root_link_ang_vel_b
+    return torch.square(w[:, 0]) + torch.square(w[:, 1])
+
+
+def both_feet_air(env, sensor_name: str = "feet_ground_contact") -> torch.Tensor:
+    """2026-11-26: geen hupjes - 1 als beide voeten tegelijk los zijn."""
+    found = env.scene.sensors[sensor_name].data.found.reshape(env.num_envs, -1)[:, :2] > 0
+    return (~found).all(-1).float()
+
+
 def residual_l2(env) -> torch.Tensor:
     """2026-11-26: residu-acties van de benen klein houden = dicht bij het pasje-rooster blijven.
     850-950 hield de voet actief aan de grond (|actie| ~0.1), terwijl het rooster zonder netwerk wel optilt."""
@@ -1566,7 +1579,10 @@ def make_duckling_velocity_env_cfg(play: bool = False, rough: bool = False) -> M
     R["stance_grip"] = RewardTermCfg(func=stance_grip, weight=1.5)   # 2026-10-13: no sliding feet
     R["stand_action_rate"] = RewardTermCfg(func=stand_action_rate, weight=-1.0)   # at rest: no wiggling
     if RESIDUAL and PJ:
-        R["residual_l2"] = RewardTermCfg(func=residual_l2, weight=-1.0 if ROOSTER == "dyn" else -4.0)   # dyn: balans vraagt bijsturen   # 2026-11-26: volg het pasje
+        R["residual_l2"] = RewardTermCfg(func=residual_l2, weight=-1.0 if ROOSTER == "dyn" else -4.0)
+    if ROOSTER == "dyn":
+        R["trunk_calm"] = RewardTermCfg(func=trunk_calm, weight=-0.5)        # 3 rad/s -> -4.5 per stap
+        R["both_feet_air"] = RewardTermCfg(func=both_feet_air, weight=-3.0)   # dyn: balans vraagt bijsturen   # 2026-11-26: volg het pasje
     # task
     R["track_linear_velocity"].weight = 2.0      # 2026-10-15: 4 -> 2, the follow rewards lead (13: 2 -> 4)
     R["track_linear_velocity"].func = track_lin_two_scale      # 2026-10-14: fine 0.03 + coarse 0.10 m/s

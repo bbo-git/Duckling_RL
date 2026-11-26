@@ -98,3 +98,11 @@ Regel: één verandering per run waar het kan.
 - Opgelost sinds de eerste pasjes-run (schok op de eend): kniesprong bij de start, "lopen"-drempel 0.02 m/s (20 % telde als
   stilstaan), firmware startte midden in een halve cyclus.
 - 100 (v5): reageert op duwtjes, maar zwaartepunt eerder naar achteren dan voren. com_forward in dyn: doel 3 mm voor de standvoeten bij lopen (was ~0 onder 20-30 %), voortgangsdrempel 0.02 -> 0.004 m/s. Hervat vanaf 100.
+- 200 (v5): komt vooruit (38 mm/10 s), maar hupjes (beide voeten bijna tegelijk los), soms dubbel dezelfde voet, gyro 3.2 rad/s.
+  Jairo: "het mag langzamer en rustiger".
+
+## 2026-11-26 ~10-00 — DYN-PASJES v6 (nieuwe run vanaf 0)
+- Rooster v6: als v5, maar cyclus 0.75 s tot 45 % (0.37 s per pas, was 0.25). Pas 6.7 mm bij 20 %, 10 mm bij 30 %, 13 mm bij 40 %.
+  Knie max 3.5 rad/s, romp ~9 mm opzij.
+- Nieuw in dyn: trunk_calm -0.5 (romp-roll/pitch-snelheid^2), both_feet_air -3 (geen hupjes); com_forward 3 mm voor de standvoet.
+- Curriculum: 20-30 %, 400: tot 40 %, 800: 8 passen tot 50 %.
