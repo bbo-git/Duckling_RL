@@ -430,9 +430,9 @@ static void command(String s) {
   else if (c == "zit") { tw_goal[0] = tw_goal[2] = 0; want_sit = true; if (mode != NET) set_mode(NET); }
   else if (c == "rondkijken") {   // rondkijken aan|uit: in rust kop rondkijken + langzame gewichtsverplaatsing
     idle_aan = (r == "aan" || r == "" || r == "cam");
-    idle_cam = (r == "cam");
+    idle_cam = idle_aan;   // 2026-11-26 (Jairo): rondkijken + altijd reageren op zwaaien (camera)
     if (idle_aan) { idle_next = millis(); want_sit = false; if (mode != NET) set_mode(NET); }   // netwerk aan (staan)
-    Serial.printf("rondkijken: %s\n", idle_cam ? "CAMERA (kijkt naar beweging, anders zelf rond)" : idle_aan ? "AAN (alleen bij stilstaan)" : "uit");
+    Serial.printf("rondkijken: %s\n", idle_aan ? "AAN (kijkt rond; zwaai = kijken + kopje scheef + snavel)" : "uit");
   }
   else if (c == "rust") {   // rust aan (standaard, = player): stilstaan = HOME vasthouden. rust uit: netwerk ook bij stilstaan
     if (r == "aan" || r == "uit") rust_aan = (r == "aan");
@@ -629,20 +629,19 @@ void loop() {
       if (idle && idle_cam && cam_t && millis() - cam_t < 300 && (cam_last.flags & 1) && still
           && (int32_t)(millis() - cam_sacc_ok) >= 0) {
         float bx = cam_last.bx_mrad / 1000.0f, by = cam_last.by_mrad / 1000.0f;
-        Serial.printf("ziet beweging: %+.0f / %+.0f gr, intensiteit %d, grootte %d\n", bx * 57.3f, by * 57.3f, cam_last.mint, cam_last.msize);
         bool zwaai = cam_last.mint >= 2;   // duidelijke beweging (zwaaien): altijd reageren
-        if (fabsf(bx) > CAM_DEAD || fabsf(by) > CAM_DEAD) {   // buiten het midden: kijk die kant op
+        if (zwaai) Serial.printf("zwaai gezien: %+.0f / %+.0f gr, intensiteit %d, grootte %d\n", bx * 57.3f, by * 57.3f, cam_last.mint, cam_last.msize);
+        if (zwaai && (fabsf(bx) > CAM_DEAD || fabsf(by) > CAM_DEAD)) {   // zwaaien buiten het midden: kijk die kant op
           idle_goal[0] = clampf(idle_cur[0] + bx, -CAM_YAW_MAX, CAM_YAW_MAX);
           idle_goal[1] = clampf(idle_cur[1] + by, -CAM_PITCH_MAX, CAM_PITCH_MAX);
           idle_goal[2] = 0; idle_rate = 2.0f;
         }
-        if ((zwaai || (fabsf(bx) <= CAM_DEAD && fabsf(by) <= CAM_DEAD)) && (int32_t)(millis() - cam_funny_ok) >= 0) {   // zwaaien of recht voor hem: kopje scheef + snavel
+        if (zwaai && (int32_t)(millis() - cam_funny_ok) >= 0) {   // zwaaien of recht voor hem: kopje scheef + snavel
           idle_goal[2] = (random(2) ? 1 : -1) * 0.20f;
           kaak_keer = 1 + random(3); kaak_dicht = millis() + 300;
           cam_funny_ok = millis() + 2500;
         }
-        cam_seen = millis(); cam_sacc_ok = millis() + 600;      // even fixeren, dan opnieuw kijken
-        idle_next = millis() + 4000;                            // 4 s geen beweging -> weer zelf rondkijken
+        if (zwaai) { cam_seen = millis(); cam_sacc_ok = millis() + 600; idle_next = millis() + 3000; }   // even blijven kijken, dan weer zelf rond
       }
       if (idle && (int32_t)(millis() - idle_next) >= 0) {
         idle_rate = IDLE_RATE;
@@ -661,7 +660,7 @@ void loop() {
         idle_cur[i] += clampf(g - idle_cur[i], -idle_rate * DT_CTRL, idle_rate * DT_CTRL);
       }
       idle_ph = idle ? idle_ph + DT_CTRL / IDLE_SHIFT_S : idle_ph;
-      idle_t += clampf((idle && !idle_cam ? 1.0f : 0.0f) - idle_t, -DT_CTRL / 1.5f, DT_CTRL / 1.5f);   // schuiven in/uit in 1.5 s (niet bij camera: lijf beweegt de camera)
+      idle_t += clampf((idle ? 1.0f : 0.0f) - idle_t, -DT_CTRL / 1.5f, DT_CTRL / 1.5f);   // schuiven in/uit in 1.5 s (niet bij camera: lijf beweegt de camera)
       float sh = idle_t * IDLE_SHIFT * sinf(6.2831853f * idle_ph);
       offs[HYAW] += idle_cur[0];
       offs[HPITCH] += 0.6f * idle_cur[1]; offs[NECK] -= 0.4f * idle_cur[1];   // omhoog = kop-pitch + en nek - (elevatie = kop - nek)
