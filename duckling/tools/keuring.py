@@ -14,6 +14,7 @@ en geeft per regel OK / FOUT, plus een eindoordeel. Schrijft een regel bij in on
 Gebruik (vanuit src/mjlab_microduck/robot/duckling, zoals de players):
   python ../../../../tools/keuring.py ../../../../../onnx/duckling_walk_650.onnx [meer.onnx ...]
   python ../../../../tools/keuring.py 650 1150          (kort: getal = onnx/duckling_walk_<n>.onnx)
+  python ../../../../tools/keuring.py --residu 300      (netwerken met residu-acties, vanaf 26 nov)
 """
 import os
 import sys
@@ -41,6 +42,7 @@ GRENS = {
 }
 
 _BASE = {id(d): dict(d) for d in (DS.ES9051, DS.DIFF_HIP)}
+RESIDU = ["--residu" in sys.argv]   # 2026-11-26: netwerken met residu-acties (vanaf de run van 26 nov)
 _GRIDS = None
 
 
@@ -58,6 +60,7 @@ def proef(onnx, vx=0.0, wz=0.0, kracht=1.0):
     r = P.Duckling("scene_walk.xml", grid=_GRIDS[0])
     r.gait_clock, r.styled, r.grids = True, True, _GRIDS
     r.set_style(0)
+    r.residual = RESIDU[0]
     ji = {n: i for i, n in enumerate(r.names)}
     hy = [ji["left_hip_yaw"], ji["right_hip_yaw"]]
     start = None
@@ -131,7 +134,7 @@ def keur(onnx):
 
 
 def main():
-    args = sys.argv[1:]
+    args = [a for a in sys.argv[1:] if not a.startswith("--")]
     if not args:
         print(__doc__)
         return

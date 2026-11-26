@@ -13,6 +13,7 @@ Action = 14 joint position targets (offsets from HOME) at 50 Hz.
 
 import json
 import math
+import re
 import os
 
 import torch
@@ -997,6 +998,13 @@ from mjlab.envs.mdp.actions.actions import JointPositionAction as _JPA, JointPos
 ACTION_FILTER_ALPHA = 0.4   # 2026-10-30: laagdoorlaat op de servodoelen (~5 Hz bij 50 Hz); zelfde in player/firmware
 ACTION_FILTER_ALPHA_HEAD = 0.25   # 2026-10-31: nek + kop rustiger (~3 Hz): de kop (52 g) was 'hysterisch'
 HEAD_JOINT_NAMES = ("neck_pitch", "head_pitch", "head_roll", "head_yaw")
+# 2026-11-26 (Jairo: "een rustige pas"): RESIDU-ACTIES. Servodoel = jouw loopje (gangrooster bij de huidige
+# opdracht en fase, kop: kijkopdracht + knik van het loopje) + RES_SCALE x netwerkuitvoer. Het netwerk stuurt
+# alleen bij; de grote beweging (en de rust) komt uit de animatie. Was: HOME + uitvoer (doelen tot +-4 rad,
+# steeds tegen de grenzen = aan/uit-sturing). Firmware en player rekenen dezelfde basis uit.
+RESIDUAL = True
+RES_SCALE_LEG = 0.30    # rad per eenheid uitvoer (~17 gr)
+RES_SCALE_HEAD = 0.20
 
 
 @_dc(kw_only=True)
@@ -1042,6 +1050,22 @@ class FilteredJointPositionAction(_JPA):
                                     for n in self._target_names], device=self.device)
         self._head = torch.tensor([n in HEAD_JOINT_NAMES for n in self._target_names], device=self.device)
         self._dt = env.step_dt
+        self._env_r = env
+        if RESIDUAL:
+            names = list(self._target_names)
+            self._leg_pos = torch.tensor([names.index(j) for j in LEG_JOINTS], device=self.device)
+            self._head_pos = torch.tensor([names.index(j) for j in HEAD_JOINTS], device=self.device)
+            self._res = torch.tensor([RES_SCALE_HEAD if n in HEAD_JOINT_NAMES else RES_SCALE_LEG for n in names],
+                                     device=self.device)
+            lo, hi = [], []
+            for n in names:
+                for pat, (a, b) in JOINT_TARGET_RANGE_DEG.items():
+                    if re.match(pat, n):
+                        lo.append(math.radians(a)); hi.append(math.radians(b)); break
+                else:
+                    raise KeyError(n)
+            self._lo = torch.tensor(lo, device=self.device)
+            self._hi = torch.tensor(hi, device=self.device)
         # 2026-11-19: vertraging tussen netwerk en servo (PWM 50 Hz + servo-elektronica): per env 0, 1 of 2
         # stappen (0/20/40 ms, kans 40/45/15 %). Het netwerk (en de schatting est) weet dat niet, net als de firmware.
         self._hist = [self._filt.clone() for _ in range(3)]
@@ -1053,8 +1077,20 @@ class FilteredJointPositionAction(_JPA):
         u = torch.rand(n, device=self.device)
         self._lag[env_ids] = (u > 0.40).long() + (u > 0.85).long()
 
+    def residual_base(self):
+        """Basis van de residu-acties (absolute gewrichtshoeken, actie-volgorde): jouw loopje."""
+        env = self._env_r
+        ref = _ref(env)
+        base = self._entity.data.default_joint_pos[:, self._target_ids].clone()
+        base[:, self._leg_pos] = ref.q_now(env)
+        base[:, self._head_pos] = base[:, self._head_pos] + head_command_when_moving(env) + ref.head_offset_now(env)
+        return base
+
     def process_actions(self, actions):
         super().process_actions(actions)
+        if RESIDUAL:
+            p = self.residual_base() + self._res * self._raw_actions
+            self._processed_actions = torch.maximum(torch.minimum(p, self._hi), self._lo)
         self._prev2 = self._prev.clone()
         self._prev = self._filt.clone()
         self._filt = self._filt + self._alpha * (self._processed_actions - self._filt)

@@ -30,4 +30,12 @@ Regel: één verandering per run waar het kan.
 
 ## 2026-11-25 ~07-45 — hervat vanaf 600
 - Twee veranderingen: head_calm (straf op nek/kop-pitch-snelheid, -0.05) en hip_pitch-imitatie 3 -> 5.
-- Keuring: (volgt)
+- Keuring 650: staat stil (-1 mm) maar draait rondjes in rust (-7 gr/s), loop 0.5 33 %, heup-yaw -7..-9 gr,
+  nek knikt nog 1 gr (was 38), onrust 16 gr/stap (was 21-23); 1.6x servo's: achteruit. 750: kop vol omlaag.
+- Op de eend (650, in de hand = geen grond): wild. Netwerkacties ~2-4 rad, net als in de simulatie.
+
+## 2026-11-26 — RESIDU-ACTIES (nieuwe run vanaf 0)
+- Servodoel = jouw loopje (gangrooster, opdracht + fase; kop = kijkopdracht + knik) + 0.30 rad x uitvoer
+  (kop 0.20). Was: HOME + uitvoer, doelen tot +-4 rad = aan/uit-sturing tegen de grenzen.
+- Het loopje alleen (uitvoer 0, open-loop in de simulatie): staat, 50 % -> op de plaats, 100 % -> +195 mm in 8 s.
+- Player en keuring: --residu. Firmware: volgt als de training werkt.

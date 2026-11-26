@@ -98,6 +98,9 @@ def model_with_sliders(scene):
     return spec.compile()
 
 
+RES_SCALE_LEG, RES_SCALE_HEAD = 0.30, 0.20   # 2026-11-26: = duckling_velocity_env_cfg.py (RESIDUAL)
+
+
 class GridClock:
     """Cadence of your walk (gait_grid.npz) at a twist command, exactly as the training
     blends it: speed = vx / v100, turn = wz in deg/s, side 0."""
@@ -107,6 +110,34 @@ class GridClock:
         self.S, self.W, self.Y = d["speeds"], d["turns"], d["sides"]
         self.cyc = d["cycle_s"][:, :, int(np.argmin(np.abs(self.Y)))]
         self.v100 = float(d["v100"])
+        # 2026-11-26: voor residu-acties de hele gang (= _GridReference in de training)
+        self.jp = np.asarray(d["joint_pos"])                       # (nS, nW, nY, T, J)
+        self.length = np.asarray(d["length"])                      # (nS, nW, nY)
+        self.jnames = [str(n) for n in d["joint_names"]]
+        self.stand = np.asarray(d["stand_joint_pos"])
+
+    def base(self, twist, phase, names, home, head_cmd):
+        """Residu-basis (absolute hoeken in volgorde 'names'): benen = loopje bij deze opdracht en fase
+        (8 roosterburen, gemengd met stilstaan), kop = HOME + kijkopdracht + knik van het loopje."""
+        s, turn, side = twist[0] / self.v100, np.degrees(twist[2]), twist[1] * 0.45
+        (i, wi), (j, wj), (k, wk) = self._axis(self.S, s), self._axis(self.W, turn), self._axis(self.Y, side)
+        q = np.zeros(self.jp.shape[-1])
+        for a, wa in ((i, 1 - wi), (i + 1, wi)):
+            for b, wb in ((j, 1 - wj), (j + 1, wj)):
+                for c, wc in ((k, 1 - wk), (k + 1, wk)):
+                    n = int(self.length[a, b, c]); f = phase * n
+                    i0 = int(np.floor(f)) % n; i1 = (i0 + 1) % n; w = f - np.floor(f)
+                    q += wa * wb * wc * ((1 - w) * self.jp[a, b, c, i0] + w * self.jp[a, b, c, i1])
+        walk = self.walk(twist)
+        heads = ("neck_pitch", "head_pitch", "head_yaw", "head_roll")
+        out = home.copy()
+        for t, n in enumerate(names):
+            g = self.jnames.index(n)
+            if n in heads:
+                out[t] = home[t] + head_cmd[heads.index(n)] + walk * (q[g] - self.stand[g])
+            else:
+                out[t] = walk * q[g] + (1 - walk) * self.stand[g]
+        return out
 
     @staticmethod
     def _axis(ax, x):
@@ -254,7 +285,15 @@ class Duckling:
         cyc = g.cycle(twist) if (g is not None and twist is not None) else CYCLE_S
         self.phase = (self.phase + TIMESTEP * DECIMATION / cyc) % 1.0
         self.last_action = action.copy()
-        self.d.ctrl[:self.nj] = self.home + action           # targets relative to HOME
+        if getattr(self, "residual", False):   # 2026-11-26: doel = jouw loopje + klein bijsturen (= training)
+            moving = twist is not None and (np.hypot(twist[0], twist[1]) > 0.02 or abs(twist[2]) > 0.1)
+            hc = getattr(self, "head_cmd", np.zeros(4)) if moving else np.zeros(4)
+            base = g.base(twist if twist is not None else np.zeros(3), self.phase, self.names, self.home, hc)
+            res = np.array([RES_SCALE_HEAD if n in ("neck_pitch", "head_pitch", "head_roll", "head_yaw")
+                            else RES_SCALE_LEG for n in self.names])
+            self.d.ctrl[:self.nj] = base + res * action
+        else:
+            self.d.ctrl[:self.nj] = self.home + action           # targets relative to HOME
         target = np.clip(self.d.ctrl[:self.nj], self.jlo, self.jhi)   # 2026-10-30: zoals training/firmware
         if getattr(self, "filt", None) is None:
             self.filt = self.d.qpos[self.qadr].copy()
@@ -487,6 +526,8 @@ def main():
     ap.add_argument("--wz", type=float, default=0.0)
     ap.add_argument("--speed", type=float, default=1.0, help="afspeelsnelheid (2 = dubbel)")
     ap.add_argument("--geen-rust", action="store_true", help="policy ook bij stilstand (geen rust-modus)")
+    ap.add_argument("--residu", action="store_true",
+                    help="2026-11-26: netwerk met residu-acties (doel = jouw loopje + bijsturen); vanaf de run van 26 nov")
     ap.add_argument("--grid", default=None,
                     help="gait_grid.npz: voor policies getraind met jouw loopje (klok in jouw tempo)")
     ap.add_argument("--cad-home", action="store_true",
@@ -513,6 +554,7 @@ def main():
     grids = [GridClock(p) for _, p in STYLES] if styled else None
     grid = GridClock(a.grid) if a.grid else (grids[0] if styled else None)
     robot = Duckling(a.scene, sliders=not a.headless, grid=grid)
+    robot.residual = a.residu
     robot.gait_clock = pol.n_in >= 63
     robot.styled = styled
     if styled:
