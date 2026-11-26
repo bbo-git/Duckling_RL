@@ -133,3 +133,6 @@ Regel: één verandering per run waar het kan.
   Met com_ref (vallen in de pas), rechtop in rust (HOME).
 - Beloningen dyn: com_track 5, swing_clean_lift 10, contact_schedule 8 (te vroeg neergezet mag blijven staan), both_feet_air -3,
   track_linear_velocity 6, residual_l2 -0.5, voetbreedte +2 mm. ERUIT: trunk_calm, soft_landing, swing_taps (maakten hem passief).
+- v11-run gestopt op 150 (Jairo: jerky stap). Pod uit.
+- Firmware (netwerk 250, v10): 'rondkijken aan' = kop kijkt rond (yaw 45, pitch 0.3), langzame gewichtsverplaatsing,
+  zwaaien (camera, intensiteit >= 2) -> kijken + kopje scheef + snavel. Jairo: leuk; viel aan het eind wel om.
