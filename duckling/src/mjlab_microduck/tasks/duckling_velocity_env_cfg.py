@@ -70,7 +70,7 @@ if ROOSTER == "pasje":
 elif ROOSTER == "dyn":
     # v6 (Jairo: "langzamer en rustiger"): 0.37 s per pas (was 0.25), pas 6.7 mm bij 20 %, 10 mm bij 30 %
     # v7: 0.45 s per pas. Ander tempo: rooster maken met walk_speed.py --pasje-dyn --pas-cyclus <s> en DUCK_GRID=<bestand>
-    _g = os.environ.get("DUCK_GRID", "gait_grid_pasje_v10.npz")   # v8: + teen-afzet 10 gr, zwaartepunt 4 mm voor; v9: waggel 30 %
+    _g = os.environ.get("DUCK_GRID", "gait_grid_pasje_v11.npz")   # v11: 0.3 s per pas (v10: 0.45 = schuifelen)   # v8: + teen-afzet 10 gr, zwaartepunt 4 mm voor; v9: waggel 30 %
     STYLES = [("normaal", _g), ("parmantig", _g)]
 STYLE_PROBS = (1.0, 0.0)   # 2026-11-19: eerst alleen "normaal" (one-hot blijft 2 lang: firmware ongewijzigd)
 # Taak: "lopen" (snelheidscommando's, eerst trainen) of "volgen" (persoon volgen, fine-tune daarna)
@@ -1709,12 +1709,10 @@ def make_duckling_velocity_env_cfg(play: bool = False, rough: bool = False) -> M
     if RESIDUAL and PJ:
         R["residual_l2"] = RewardTermCfg(func=residual_l2, weight=-0.5 if ROOSTER == "dyn" else -4.0)
     if ROOSTER == "dyn":
-        R["trunk_calm"] = RewardTermCfg(func=trunk_calm, weight=-0.2)   # 250 deed bijna niets: -0.5 -> -0.2        # 3 rad/s -> -4.5 per stap
+        # 2026-11-26 v11: trunk_calm, soft_landing en swing_taps eruit - maakten hem passief (schuifelen)
         R["both_feet_air"] = RewardTermCfg(func=both_feet_air, weight=-3.0)
-        R["soft_landing"] = RewardTermCfg(func=soft_landing, weight=-5.0)   # -20 -> -5 (250: niet optillen = geen straf)   # 0.27 m/s -> -1.5 per stap
         # 2026-11-26: optillen alleen belonen zolang de zwaai schoon is; elk tikje kost (150-250 tikten 2-4x per pasje)
         R["swing_clearance"] = RewardTermCfg(func=swing_clean_lift, weight=10.0)   # 6 -> 10
-        R["swing_taps"] = RewardTermCfg(func=swing_taps, weight=-2.0)              # -5 -> -2
         R["com_track"] = RewardTermCfg(func=com_track, weight=5.0)       # in de pas vallen; rechtop in rust
         R["contact_schedule"].weight = 8.0   # 500 zwaaide in 0.12 s i.p.v. 0.4 s en tilde dubbel: timing van het rooster telt zwaarder   # dyn: balans vraagt bijsturen   # 2026-11-26: volg het pasje
     # task

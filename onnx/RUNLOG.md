@@ -125,3 +125,11 @@ Regel: één verandering per run waar het kan.
   swing_taps -5 per tikje. soft_landing -20, contact_schedule 8, both_feet_air -3, trunk_calm -0.5, com_forward 5 (doel 5 mm).
 - Voetbreedte max = loopje + 2 mm (Jairo: "geen zijwaartse stap").
 - 250 (sim en echt gelijk): rustig schuifelen, niet gevallen, nauwelijks vooruit, voet ~1 mm, zwaartepunt -1.3 mm. Te veel straffen -> niets doen is het veiligst. Versoepeld: soft_landing -20 -> -5, swing_taps -5 -> -2, trunk_calm -0.5 -> -0.2, residual_l2 -1 -> -0.5; beloningen swing_clean_lift 6 -> 10, track_linear_velocity 4 -> 6. Hervat vanaf 250.
+- v10-run 450: geen echte pas (voet 3 mm, 1-2 mm vooruit). Patroon vandaag: 0.25 s/pas = echte (felle) stappen, 0.37 = redelijk,
+  0.45 = schuifelen, ook met steeds meer beloningsaanpassingen.
+
+## 2026-11-26 ~12-05 — DYN-PASJES v11 (nieuwe run vanaf 0)
+- Rooster v11 = v10 met cyclus 0.6 s (0.3 s per pas): pas 5.4 mm bij 20 %, 8 mm bij 30 %; knie 3.4, enkel 4.5 rad/s; romp 8 mm opzij.
+  Met com_ref (vallen in de pas), rechtop in rust (HOME).
+- Beloningen dyn: com_track 5, swing_clean_lift 10, contact_schedule 8 (te vroeg neergezet mag blijven staan), both_feet_air -3,
+  track_linear_velocity 6, residual_l2 -0.5, voetbreedte +2 mm. ERUIT: trunk_calm, soft_landing, swing_taps (maakten hem passief).
