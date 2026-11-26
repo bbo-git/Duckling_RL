@@ -80,3 +80,5 @@ Regel: één verandering per run waar het kan.
   Curriculum: 1250: <=12 %; 1500: 8 pasjes <=16 %; 1800: <=20 %.
 - Player en firmware: netwerk standaard ook aan in rust.
 - track_linear_velocity in pasjes: std 0.006/0.02 m/s (was 0.03/0.10: stilstaan bij 9 % kreeg 93 % van de beloning).
+- 150 (gemeten): zwaaivoet gaat met heup-roll (+0.45) 6 mm naar buiten (breedte 49 -> 60 mm), nauwelijks vooruit; Jairo: "meer
+  opzij dan naar voren, blijft haken". -> stance_width in pasjes: max 52 mm (HOME 49 + 3), straf -400 (was 56 mm, -200). Hervat vanaf 150.

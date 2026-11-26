@@ -117,6 +117,8 @@ def _stance_too_wide(env, max_width: float, asset_cfg: SceneEntityCfg, per_style
     lateral = -torch.sin(yaw) * diff[:, 0] + torch.cos(yaw) * diff[:, 1]
     if per_style:   # 2026-10-29: voetbreedte van de stijl + STANCE_SLACK (parmantig staat breder)
         max_width = _style_tensor(env, "width")[env_style(env)] + STANCE_SLACK
+        if os.environ.get("DUCK_ROOSTER", "pasje") == "pasje":
+            max_width = 0.0493 + 0.003   # 2026-11-26: pasje-rooster = HOME-voetbreedte; 150 zette de voet 6 mm opzij
     return torch.clamp(lateral.abs() - max_width, min=0.0)
 
 
@@ -1573,7 +1575,7 @@ def make_duckling_velocity_env_cfg(play: bool = False, rough: bool = False) -> M
     R["dof_pos_limits"].params["asset_cfg"] = SceneEntityCfg(
         "robot", joint_names=(r"^(?!passive_).*",))   # passive jaw rests on its limit
     R["stance_width"] = RewardTermCfg(
-        func=_stance_too_wide, weight=-200.0,   # 2026-11-01: -100 -> -200
+        func=_stance_too_wide, weight=-400.0 if os.environ.get("DUCK_ROOSTER", "pasje") == "pasje" else -200.0,   # 2026-11-01: -100 -> -200; pasjes -400
         params={"max_width": STANCE_MAX_WIDTH,
                 "asset_cfg": SceneEntityCfg("robot", site_names=("left_foot", "right_foot"))},
     )
