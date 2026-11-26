@@ -83,7 +83,7 @@ COM_DX = d.subtree_com[1][0] - home_feet['left'][0]       # HOME: zwaartepunt t.
 def mj(u):  # min-jerk 0..1
     u = np.clip(u, 0, 1); return u**3 * (10 - 15*u + 6*u*u)
 
-def maak(shift_s=0.5, swing_s=0.2, back_s=0.5, hold_s=1.0, half=3.0e-3, lift=0.008, com_y=0.0105, com_x_ahead=0.001, fall_x=0.6, fall_y=0.6, land_pow=2.0,
+def maak(shift_s=0.5, swing_s=0.24, back_s=0.5, hold_s=1.0, half=5.0e-3, lift=0.008, com_y=0.0105, com_x_ahead=0.001, fall_x=0.8, fall_y=0.6, land_pow=2.0, rise=0.3, strek=0.003,
          head_roll=True, fps=50):
     """half = halve paslengte: in rust staan de voeten +-half verspringend; elke zwaai verplaatst de voet 4*half."""
     y0 = home_feet['left'][1]; xs = home_feet['left'][0]; z0 = home_feet['left'][2]
@@ -91,9 +91,9 @@ def maak(shift_s=0.5, swing_s=0.2, back_s=0.5, hold_s=1.0, half=3.0e-3, lift=0.0
     feet = {'left': np.array([xs + half, y0, z0]), 'right': np.array([xs - half, -y0, z0])}   # links voor
     body_x = xs                                   # midden tussen de voeten (x)
     q, b = kin.home.copy(), np.array([0, 0, H0, 0.0])
-    def frame(f, cxy, contact):
+    def frame(f, cxy, contact, z=H0):
         nonlocal q, b
-        q, b, res, c = solve({k: v.copy() for k, v in f.items()}, cxy, None, q0=q, base0=b, iters=60)
+        q, b, res, c = solve({k: v.copy() for k, v in f.items()}, cxy, None, q0=q, base0=b, iters=60, z_t=z)
         frames.append(dict(q=q.copy(), b=b.copy(), com=c.copy(), feet={k: v.copy() for k, v in f.items()},
                            contact=contact, res=res))
     for stand, swing in (('left', 'right'), ('right', 'left')):
@@ -102,7 +102,7 @@ def maak(shift_s=0.5, swing_s=0.2, back_s=0.5, hold_s=1.0, half=3.0e-3, lift=0.0
         tgt = np.array([feet[stand][0] + com_x_ahead, sgn * com_y])
         n = int(shift_s * fps)
         for k in range(n):
-            u = mj((k + 1) / n); frame(feet, mid + u * (tgt - mid), (1, 1))
+            u = mj((k + 1) / n); frame(feet, mid + u * (tgt - mid), (1, 1), H0 + strek * u)
         # zwaai
         start = feet[swing].copy(); end = start.copy(); end[0] += 4 * half
         n = int(swing_s * fps)
@@ -110,19 +110,20 @@ def maak(shift_s=0.5, swing_s=0.2, back_s=0.5, hold_s=1.0, half=3.0e-3, lift=0.0
         for k in range(n):
             u = (k + 1) / n
             p = start + mj(u) * (end - start)
-            p[2] = z0 + lift * math.sin(math.pi * u) ** land_pow   # land_pow 2: zacht neerzetten (snelheid 0 bij landen)
+            # 2026-11-26 (Jairo: snellere voetlift): snel op in de eerste 'rise' van de zwaai, dan zacht neer
+            p[2] = z0 + lift * (mj(u / rise) if u < rise else 1 - mj((u - rise) / (1 - rise)) ** 1.0)
             f = dict(feet); f[swing] = p
             # zwaartepunt gaat verder naar voren (vallen in de pas), opzij blijft
             # 2026-11-26 (dubbele bounce): het zwaartepunt valt tijdens de zwaai al terug naar de zwaaikant (zoals het
             # in de fysica echt gaat); anders duwt de romp hem na het neerzetten terug en komt de voet nog eens los
             c = tgt + np.array([mj(u) * 2 * half * fall_x, -sgn * com_y * fall_y * mj(u)])
-            frame(f, c, (1, 0) if stand == 'left' else (0, 1))
+            frame(f, c, (1, 0) if stand == 'left' else (0, 1), H0 + strek)   # standbeen gestrekt
         feet[swing] = end
         newmid = np.array([(feet['left'][0] + feet['right'][0]) / 2 + COM_DX, 0.0])
         c0 = frames[-1]['com'].copy()
         n = int(back_s * fps)
         for k in range(n):
-            u = mj((k + 1) / n); frame(feet, c0 + u * (newmid - c0), (1, 1))
+            u = mj((k + 1) / n); frame(feet, c0 + u * (newmid - c0), (1, 1), H0 + strek * (1 - u))
         for k in range(int(hold_s * fps)):
             frame(feet, newmid, (1, 1))
     return frames
