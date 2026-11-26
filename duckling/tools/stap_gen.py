@@ -83,7 +83,7 @@ COM_DX = d.subtree_com[1][0] - home_feet['left'][0]       # HOME: zwaartepunt t.
 def mj(u):  # min-jerk 0..1
     u = np.clip(u, 0, 1); return u**3 * (10 - 15*u + 6*u*u)
 
-def maak(shift_s=0.5, swing_s=0.3, back_s=0.5, hold_s=0.3, half=3.0e-3, lift=0.010, com_y=0.0105, com_x_ahead=0.001, fall_x=0.6,
+def maak(shift_s=0.5, swing_s=0.2, back_s=0.5, hold_s=1.0, half=3.0e-3, lift=0.008, com_y=0.0105, com_x_ahead=0.001, fall_x=0.6, fall_y=0.6, land_pow=2.0,
          head_roll=True, fps=50):
     """half = halve paslengte: in rust staan de voeten +-half verspringend; elke zwaai verplaatst de voet 4*half."""
     y0 = home_feet['left'][1]; xs = home_feet['left'][0]; z0 = home_feet['left'][2]
@@ -110,10 +110,12 @@ def maak(shift_s=0.5, swing_s=0.3, back_s=0.5, hold_s=0.3, half=3.0e-3, lift=0.0
         for k in range(n):
             u = (k + 1) / n
             p = start + mj(u) * (end - start)
-            p[2] = z0 + lift * math.sin(math.pi * u) ** 1.2
+            p[2] = z0 + lift * math.sin(math.pi * u) ** land_pow   # land_pow 2: zacht neerzetten (snelheid 0 bij landen)
             f = dict(feet); f[swing] = p
             # zwaartepunt gaat verder naar voren (vallen in de pas), opzij blijft
-            c = tgt + np.array([mj(u) * 2 * half * fall_x, 0.0])
+            # 2026-11-26 (dubbele bounce): het zwaartepunt valt tijdens de zwaai al terug naar de zwaaikant (zoals het
+            # in de fysica echt gaat); anders duwt de romp hem na het neerzetten terug en komt de voet nog eens los
+            c = tgt + np.array([mj(u) * 2 * half * fall_x, -sgn * com_y * fall_y * mj(u)])
             frame(f, c, (1, 0) if stand == 'left' else (0, 1))
         feet[swing] = end
         newmid = np.array([(feet['left'][0] + feet['right'][0]) / 2 + COM_DX, 0.0])
