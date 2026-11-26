@@ -127,6 +127,8 @@ def _stance_too_wide(env, max_width: float, asset_cfg: SceneEntityCfg, per_style
     lateral = -torch.sin(yaw) * diff[:, 0] + torch.cos(yaw) * diff[:, 1]
     if per_style:   # 2026-10-29: voetbreedte van de stijl + STANCE_SLACK (parmantig staat breder)
         max_width = _style_tensor(env, "width")[env_style(env)] + STANCE_SLACK
+        if ROOSTER == "dyn":   # 2026-11-26 (Jairo: "geen zijwaartse stap"): breedte van het loopje + 2 mm
+            max_width = _style_tensor(env, "width")[env_style(env)] + 0.002
         if ROOSTER == "pasje":
             max_width = 0.0493 + 0.003   # 2026-11-26: pasje-rooster = HOME-voetbreedte; 150 zette de voet 6 mm opzij
     return torch.clamp(lateral.abs() - max_width, min=0.0)
@@ -1442,6 +1444,65 @@ def trunk_calm(env) -> torch.Tensor:
     return torch.square(w[:, 0]) + torch.square(w[:, 1])
 
 
+class swing_clean:
+    """2026-11-26 (150-250 tikten de voet 2-4x per pasje): EEN schone zwaai. Per voet, binnen de zwaaifase van het
+    rooster: zodra de voet los is geweest en weer de grond raakt, is de zwaai 'gebroken'. Uitvoer (N, 2):
+    kolom 0 = optil-beloning (hoogte / doel, alleen zolang de zwaai niet gebroken is),
+    kolom 1 = aantal tikjes (opnieuw neerzetten tijdens de zwaai) deze stap."""
+
+    def __init__(self, env):
+        asset = env.scene["robot"]
+        self.site_ids = asset.find_sites(("left_foot", "right_foot"), preserve_order=True)[0]
+        self.been_air = None
+        self.broken = None
+        self.prev_swing = None
+        self.last_step = -1
+        self.out = None
+
+    def update(self, env, sensor_name="feet_ground_contact"):
+        if env.common_step_counter == self.last_step and self.out is not None:
+            return self.out
+        self.last_step = env.common_step_counter
+        ref = _ref(env)
+        swing = ~ref.contact_now(env)                                     # (N, 2) bool
+        found = env.scene.sensors[sensor_name].data.found.reshape(env.num_envs, -1)[:, :2] > 0
+        if self.been_air is None or self.been_air.shape != swing.shape:
+            self.been_air = torch.zeros_like(swing); self.broken = torch.zeros_like(swing)
+            self.prev_swing = torch.zeros_like(swing)
+        start = swing & ~self.prev_swing                                  # nieuwe zwaai: opnieuw beginnen
+        self.been_air = torch.where(start, torch.zeros_like(swing), self.been_air)
+        self.broken = torch.where(start, torch.zeros_like(swing), self.broken)
+        tap = swing & self.been_air & found & ~self.broken
+        self.broken = self.broken | tap
+        self.been_air = self.been_air | (swing & ~found)
+        self.prev_swing = swing
+        z = env.scene["robot"].data.site_pos_w[:, self.site_ids, 2]
+        lift = torch.stack([z[:, 0] - z[:, 1], z[:, 1] - z[:, 0]], dim=-1)
+        target = ref.lift_s[env_style(env)][:, None]
+        r = torch.clamp(lift / target, 0.0, 1.0) * swing.float() * (~self.broken).float()
+        n = swing.float().sum(-1)
+        rew = torch.where(n > 0, r.sum(-1) / n.clamp(min=1), torch.zeros_like(n))
+        self.out = torch.stack([rew, tap.float().sum(-1)], -1)
+        return self.out
+
+
+_SWING_CLEAN = {}
+
+
+def _swing_clean(env):
+    if "x" not in _SWING_CLEAN or _SWING_CLEAN["env"] is not env:
+        _SWING_CLEAN["x"] = swing_clean(env); _SWING_CLEAN["env"] = env
+    return _SWING_CLEAN["x"].update(env)
+
+
+def swing_clean_lift(env, command_name: str = "twist") -> torch.Tensor:
+    return _swing_clean(env)[:, 0] * _moving(env, command_name).float()
+
+
+def swing_taps(env, command_name: str = "twist") -> torch.Tensor:
+    return _swing_clean(env)[:, 1] * _moving(env, command_name).float()
+
+
 class soft_landing:
     """2026-11-26 (500: klap bij het neerzetten, romp zakt 107 mm/s): neerwaartse snelheid^2 (m/s) van een voet
     die vlak boven de grond is (< 4 mm) - straf op hard neerzetten."""
@@ -1605,6 +1666,9 @@ def make_duckling_velocity_env_cfg(play: bool = False, rough: bool = False) -> M
         R["trunk_calm"] = RewardTermCfg(func=trunk_calm, weight=-0.5)        # 3 rad/s -> -4.5 per stap
         R["both_feet_air"] = RewardTermCfg(func=both_feet_air, weight=-3.0)
         R["soft_landing"] = RewardTermCfg(func=soft_landing, weight=-20.0)   # 0.27 m/s -> -1.5 per stap
+        # 2026-11-26: optillen alleen belonen zolang de zwaai schoon is; elk tikje kost (150-250 tikten 2-4x per pasje)
+        R["swing_clearance"] = RewardTermCfg(func=swing_clean_lift, weight=6.0)
+        R["swing_taps"] = RewardTermCfg(func=swing_taps, weight=-5.0)
         R["contact_schedule"].weight = 8.0   # 500 zwaaide in 0.12 s i.p.v. 0.4 s en tilde dubbel: timing van het rooster telt zwaarder   # dyn: balans vraagt bijsturen   # 2026-11-26: volg het pasje
     # task
     R["track_linear_velocity"].weight = 2.0      # 2026-10-15: 4 -> 2, the follow rewards lead (13: 2 -> 4)

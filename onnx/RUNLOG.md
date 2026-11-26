@@ -116,3 +116,11 @@ Regel: één verandering per run waar het kan.
 - 300 (v8): zwaartepunt +2 mm voor (doel 4), 0 hupjes, voet 3.5x los per pasje (schuifel), 60 mm/10 s, romp-roll +-7.5 gr. Jairo: te veel zijwaartse heupzwaai. v9: waggel 30 % (romp-roll in het rooster 3.7 -> 1.3 gr).
 - 500 (v9): zwaartepunt +5..6 mm voor (doel gehaald), 95-113 mm/10 s, stil na het pasje. Maar zwaai 0.12 s (rooster 0.4 s), voet 11 mm op, klap bij neerzetten (romp -107 mm/s) en dezelfde voet nog eens op ('double bounce'). -> soft_landing -20 (neerwaartse voetsnelheid^2 onder 4 mm), contact_schedule 4 -> 8. Hervat vanaf 500.
 - Jairo: "met heup-roll balans zijwaarts, met de tenen voorwaarts: zichzelf een klein stukje naar voren laten kantelen" (500 kantelde bij elke pas achterover, ~1.2 rad/s). v10: romp 3 gr voorover, zwaartepunt 6 mm voor de standvoet; com_forward-doel 5 mm. Hervat.
+- Run v9 150-250: tikt dezelfde voet 2-4x per pasje (voet 3 mm op), "nare dubbele voetsprong"; Jairo: 250 echt niet goed.
+
+## 2026-11-26 ~11-05 — DYN-PASJES v10 + SCHONE ZWAAI (nieuwe run vanaf 0)
+- Rooster v10: romp 3 gr voorover, zwaartepunt 6 mm voor de standvoet (Jairo: "met zijn tenen zichzelf naar voren laten
+  hellen"), 0.45 s per pas, waggel 30 %, teen-afzet 10 gr, voet 8 mm op.
+- swing_clearance -> swing_clean_lift (6): optillen telt alleen zolang de voet in deze zwaai nog niet opnieuw de grond raakte.
+  swing_taps -5 per tikje. soft_landing -20, contact_schedule 8, both_feet_air -3, trunk_calm -0.5, com_forward 5 (doel 5 mm).
+- Voetbreedte max = loopje + 2 mm (Jairo: "geen zijwaartse stap").
