@@ -136,3 +136,10 @@ Regel: één verandering per run waar het kan.
 - v11-run gestopt op 150 (Jairo: jerky stap). Pod uit.
 - Firmware (netwerk 250, v10): 'rondkijken aan' = kop kijkt rond (yaw 45, pitch 0.3), langzame gewichtsverplaatsing,
   zwaaien (camera, intensiteit >= 2) -> kijken + kopje scheef + snavel. Jairo: leuk; viel aan het eind wel om.
+
+## VOLGENDE KEER: eerst een goede stap ontwerpen (Jairo, 26 nov)
+1. Stap samen ontwerpen in de viewer (walk_speed --pasje-dyn --view / --load), Jairo keurt op het oog: gewicht opzij (heup-roll)
+   en naar voren (tenen), voet op, neerzetten, opvangen, stoppen. Tempo ~0.3 s per pas (sneller = fel, trager = schuifelen).
+2. Fysica-check zonder netwerk (lift.py / meet.py): voet echt los, zool plat, geen zoolrand in de vloer, zwaartepunt-verloop.
+3. Pas dan EEN training, met een klein vast beloningspakket; meten bij 150/300 met dezelfde meetlat (voet los per pas = 1,
+   voethoogte, vooruit per pas, zwaartepunt t.o.v. de standvoet, romp-gyro). Niet elke run iets anders.
