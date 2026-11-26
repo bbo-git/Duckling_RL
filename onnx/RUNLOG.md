@@ -42,3 +42,5 @@ Regel: één verandering per run waar het kan.
 - Fase "pasjes" (DUCK_FASE, standaard): 20-50 % vooruit (pas 4.5-11 mm, loopje ~4 passen/s), start vanuit HOME 70 %, duwtjes 0.1 m/s, niet draaien, opdracht elke 1.5-4 s, 40 % stilstaan.
   Daarna fase "lopen" (DUCK_FASE=lopen ... resume): 0-100 % + draaien.
 - Firmware: `passen <n> [f]` voor losse pasjes op de eend.
+- Pasjes-schema (vervangt willekeurige opdrachten in fase pasjes): staan 1-2.5 s -> wachten op halve gangcyclus ->
+  precies n passen op f -> staan. Curriculum: it 0: 1 pas, <=25 %; 300: 1-2, <=30 %; 600: 1-4, <=40 %; 900: 1-8, <=50 %.

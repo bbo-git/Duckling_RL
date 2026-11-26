@@ -280,6 +280,9 @@ class BehaviorVelocityCommand(StyleVelocityCommand):
             # de robotpose is pas na de volgende fysica-stap bijgewerkt: persoon dan pas neerzetten
             self._place[env_ids] = True
             self.is_standing_env[env_ids] &= ~self.is_beh[env_ids]
+            if hasattr(self, "_pj_state"):   # pasjes: nieuwe episode begint met staan
+                self._pj_state[env_ids] = 0
+                self._pj_t[env_ids] = torch.rand(k, device=self.device) * 1.5 + 0.5
         return out
 
     def _camera(self):
@@ -313,6 +316,57 @@ class BehaviorVelocityCommand(StyleVelocityCommand):
         self.behavior.h_elev = head[:, 1] - head[:, 0]
         self.head_cmd = head
         self.metrics["beh_state"] = torch.where(b, self.behavior.state, self.metrics["beh_state"])
+        if FASE == "pasjes" and TASK != "volgen":
+            self._pasjes()
+
+    # 2026-11-26 (Jairo: "eerst 1 pasje echt goed, eerst klein, dan groter"). Per env een vast schema:
+    # staan (1-2.5 s) -> wachten tot de gangklok op een halve cyclus staat -> precies n passen (halve cycli)
+    # lopen op snelheid f -> staan. Curriculum op iteratie: n en f groeien.
+    PASJES_STAGES = [   # (vanaf iteratie, max passen, max snelheid als fractie van v100)
+        (0, 1, 0.25), (300, 2, 0.30), (600, 4, 0.40), (900, 8, 0.50)]
+
+    def _pasjes(self):
+        n_env, dev = self.num_envs, self.device
+        if not hasattr(self, "_pj_state"):
+            self._pj_state = torch.zeros(n_env, dtype=torch.long, device=dev)    # 0 staan, 1 wacht, 2 loop
+            self._pj_t = torch.rand(n_env, device=dev) * 1.5 + 0.5
+            self._pj_left = torch.zeros(n_env, dtype=torch.long, device=dev)
+            self._pj_f = torch.zeros(n_env, device=dev)
+            self._pj_half = torch.zeros(n_env, dtype=torch.long, device=dev)
+        dt = self._env.step_dt
+        it = self._env.common_step_counter / 24.0
+        n_max, f_max = 1, 0.25
+        for start, n_, f_ in self.PASJES_STAGES:
+            if it >= start:
+                n_max, f_max = n_, f_
+        ref = _ref(self._env)
+        half = torch.floor(ref.phase * 2).long()
+        crossed = half != self._pj_half
+        self._pj_half = half
+        st = self._pj_state
+        # staan -> wachten (nieuw doel kiezen)
+        self._pj_t = torch.where(st == 0, self._pj_t - dt, self._pj_t)
+        go = (st == 0) & (self._pj_t <= 0)
+        if go.any():
+            k = int(go.sum())
+            self._pj_left[go] = torch.randint(1, n_max + 1, (k,), device=dev)
+            self._pj_f[go] = torch.empty(k, device=dev).uniform_(0.2, max(f_max, 0.2))
+            st = torch.where(go, torch.ones_like(st), st)
+        # wachten -> lopen op de grens van een halve cyclus (pas begint met een voet)
+        st = torch.where((st == 1) & crossed, torch.full_like(st, 2), st)
+        # lopen: elke halve cyclus = 1 pas; klaar -> staan
+        walk_cross = (st == 2) & crossed & (self._pj_state == 2)
+        self._pj_left = torch.where(walk_cross, self._pj_left - 1, self._pj_left)
+        done = (st == 2) & (self._pj_left <= 0)
+        if done.any():
+            self._pj_t[done] = torch.empty(int(done.sum()), device=dev).uniform_(1.0, 2.5)
+            st = torch.where(done, torch.zeros_like(st), st)
+        self._pj_state = st
+        v = torch.where(st == 2, self._pj_f * self._v100[self.style], torch.zeros_like(self._pj_f))
+        self.vel_command_b[:, 0] = v
+        self.vel_command_b[:, 1] = 0.0
+        self.vel_command_b[:, 2] = 0.0
+        self.vel_command_w[:] = self.vel_command_b
 
 
 @_dataclass(kw_only=True)
