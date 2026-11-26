@@ -46,7 +46,7 @@ if PASJE["aan"]:
 # 2026-11-26 (v5, Jairo: "elke stap een element van de echte walk"): dynamische pasjes = het loopje zelf
 # (zelfde cadans, ~0.25 s per pas), maar op HOME-hoogte (geen kniesprong bij de start), voet 8 mm op,
 # geen afzet, minder doorveren. Quasi-statisch kan deze eend niet zonder enkel-roll (zie RUNLOG).
-PASJE_DYN = dict(aan=("--pasje-dyn" in sys.argv or os.environ.get("DUCK_PASJE") == "dyn"), tot=0.45, vlot=0.80, lift=0.008, cycle=float(os.environ.get("DUCK_PAS_CYCLUS", "0.9")), com_ahead=0.004, push=10.0, waddle=0.3)   # v7: 0.9 s cyclus (0.45 s per pas) tot 45 % (v6: 0.75)
+PASJE_DYN = dict(aan=("--pasje-dyn" in sys.argv or os.environ.get("DUCK_PASJE") == "dyn"), tot=0.45, vlot=0.80, lift=0.008, cycle=float(os.environ.get("DUCK_PAS_CYCLUS", "0.9")), com_ahead=0.006, push=10.0, waddle=0.3, pitch=3.0)   # v10: 6 mm voor, romp 3 gr voorover   # v7: 0.9 s cyclus (0.45 s per pas) tot 45 % (v6: 0.75)
 # negative = walking backwards (2026-10-13): your walk at |speed|, relaxed, steps reversed
 TURNS = np.array([-90.0, -45.0, 0.0, 45.0, 90.0])          # deg/s, + = left
 SIDES = np.array([-0.010, 0.0, 0.010])                     # m per cycle, + = left
@@ -156,7 +156,7 @@ def rule_params(base: G.GaitParams, s: float) -> G.GaitParams:
         if k > 0:
             L = lambda a, b: a + (b - a) * k
             p.height_m = L(p.height_m, HOME_H)
-            p.pitch_deg = L(p.pitch_deg, 0.0)
+            p.pitch_deg = L(p.pitch_deg, PASJE_DYN["pitch"])   # v10: licht voorover (enkels/tenen)
             p.lift_m = L(p.lift_m, max(p.lift_m, PASJE_DYN["lift"]))
             p.cycle_s = L(p.cycle_s, PASJE_DYN["cycle"])
             p.stride_m = sv * v0 * p.cycle_s      # snelheid = opdracht

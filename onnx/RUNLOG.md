@@ -115,3 +115,4 @@ Regel: één verandering per run waar het kan.
 - com_forward 2 -> 5 in dyn.
 - 300 (v8): zwaartepunt +2 mm voor (doel 4), 0 hupjes, voet 3.5x los per pasje (schuifel), 60 mm/10 s, romp-roll +-7.5 gr. Jairo: te veel zijwaartse heupzwaai. v9: waggel 30 % (romp-roll in het rooster 3.7 -> 1.3 gr).
 - 500 (v9): zwaartepunt +5..6 mm voor (doel gehaald), 95-113 mm/10 s, stil na het pasje. Maar zwaai 0.12 s (rooster 0.4 s), voet 11 mm op, klap bij neerzetten (romp -107 mm/s) en dezelfde voet nog eens op ('double bounce'). -> soft_landing -20 (neerwaartse voetsnelheid^2 onder 4 mm), contact_schedule 4 -> 8. Hervat vanaf 500.
+- Jairo: "met heup-roll balans zijwaarts, met de tenen voorwaarts: zichzelf een klein stukje naar voren laten kantelen" (500 kantelde bij elke pas achterover, ~1.2 rad/s). v10: romp 3 gr voorover, zwaartepunt 6 mm voor de standvoet; com_forward-doel 5 mm. Hervat.

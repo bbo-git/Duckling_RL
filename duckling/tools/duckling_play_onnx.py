@@ -73,7 +73,7 @@ HOME_POS_DEG = {"hip_pitch": 0.0, "knee": 0.0, "ankle": 0.0}   # V2; V1 was -11.
 STYLES = [("normaal", "grids/gait_grid_normaal_v3.npz"), ("parmantig", "grids/gait_grid_parmantig_v5.npz")]
 # 2026-11-26: rustige pasjes (training DUCK_ROOSTER=pasje, standaard). --oud = het oude loopje-rooster
 if "--oud" not in sys.argv:
-    _g = "grids/gait_grid_pasje_v9.npz"
+    _g = "grids/gait_grid_pasje_v10.npz"
     if "--rooster" in sys.argv:   # 2026-11-26: ander rooster, bv. --rooster grids/gait_grid_pasje_v6.npz
         _g = sys.argv[sys.argv.index("--rooster") + 1]
     STYLES = [("normaal", _g), ("parmantig", _g)]
@@ -565,7 +565,7 @@ def main():
     ap.add_argument("--wz", type=float, default=0.0)
     ap.add_argument("--speed", type=float, default=1.0, help="afspeelsnelheid (2 = dubbel)")
     ap.add_argument("--geen-rust", action="store_true", help="(standaard sinds 26 nov) policy ook bij stilstand")
-    ap.add_argument("--rooster", default=None, help="gangrooster (standaard grids/gait_grid_pasje_v9.npz)")
+    ap.add_argument("--rooster", default=None, help="gangrooster (standaard grids/gait_grid_pasje_v10.npz)")
     ap.add_argument("--rust", action="store_true", help="rust-modus: bij stilstand netwerk uit, HOME vasthouden")
     ap.add_argument("--oefen", nargs="*", type=float, default=None, metavar="X",
                     help="rust, pasje, rust, pasje... : --oefen [passen] [snelheid] [rust_s] (standaard 1 0.25 1.5)")

@@ -70,7 +70,7 @@ if ROOSTER == "pasje":
 elif ROOSTER == "dyn":
     # v6 (Jairo: "langzamer en rustiger"): 0.37 s per pas (was 0.25), pas 6.7 mm bij 20 %, 10 mm bij 30 %
     # v7: 0.45 s per pas. Ander tempo: rooster maken met walk_speed.py --pasje-dyn --pas-cyclus <s> en DUCK_GRID=<bestand>
-    _g = os.environ.get("DUCK_GRID", "gait_grid_pasje_v9.npz")   # v8: + teen-afzet 10 gr, zwaartepunt 4 mm voor; v9: waggel 30 %
+    _g = os.environ.get("DUCK_GRID", "gait_grid_pasje_v10.npz")   # v8: + teen-afzet 10 gr, zwaartepunt 4 mm voor; v9: waggel 30 %
     STYLES = [("normaal", _g), ("parmantig", _g)]
 STYLE_PROBS = (1.0, 0.0)   # 2026-11-19: eerst alleen "normaal" (one-hot blijft 2 lang: firmware ongewijzigd)
 # Taak: "lopen" (snelheidscommando's, eerst trainen) of "volgen" (persoon volgen, fine-tune daarna)
@@ -1371,7 +1371,7 @@ class com_forward:
         # 2026-10-15: one-sided - only falling SHORT of the target costs (it reached ~half of it)
         tgt = com100 * into
         if ROOSTER == "dyn":   # 2026-11-26 (Jairo: zwaartepunt gaat eerder naar achteren dan naar voren):
-            tgt = torch.where(s > 0.1, torch.clamp(tgt, min=0.004), tgt)   # pasjes: 4 mm (v8) voor de standvoet(en)
+            tgt = torch.where(s > 0.1, torch.clamp(tgt, min=0.005), tgt)   # pasjes: 5 mm (v10; v8 4 mm) voor de standvoet(en)
         short = torch.sign(s) * (torch.sign(s) * tgt - ahead)
         r = torch.exp(-torch.square(torch.clamp(short, min=0.0) / std))
         # 2026-10-15: leaning only pays while it actually WALKS that way. volg7 leaned 9.4 mm
