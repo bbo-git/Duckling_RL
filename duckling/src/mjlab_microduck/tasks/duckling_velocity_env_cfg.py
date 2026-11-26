@@ -60,6 +60,9 @@ STYLES = [   # (naam, rooster in robot/duckling/grids/)
 STYLE_PROBS = (1.0, 0.0)   # 2026-11-19: eerst alleen "normaal" (one-hot blijft 2 lang: firmware ongewijzigd)
 # Taak: "lopen" (snelheidscommando's, eerst trainen) of "volgen" (persoon volgen, fine-tune daarna)
 TASK = os.environ.get("DUCK_TASK", "lopen")
+# 2026-11-26 (Jairo): FASE binnen "lopen". "pasjes" = eerst losse pasjes: 0-35 % vooruit, niet draaien, vaak
+# stoppen/starten (opdracht elke 1.5-4 s, 40 % stilstaan). "lopen" = 0-100 % + draaien (hervatten vanaf pasjes).
+FASE = os.environ.get("DUCK_FASE", "pasjes")
 # 2026-10-29: GEDRAG - in dit deel van de envs komen vx, wz en het kopcommando uit de toestandsmachine
 # van de robot (duckling_behavior.py) met een virtuele persoon en nep-ESP, zodat de policy alle
 # overgangen oefent (rust -> naderen -> volgen -> orbit -> terug -> ...). De rest: willekeurig.
@@ -1596,6 +1599,11 @@ def make_duckling_velocity_env_cfg(play: bool = False, rough: bool = False) -> M
         # Eerst dit trainen op V2; volgen (DUCK_TASK=volgen) is een fine-tune daarna.
         cmd.ranges.lin_vel_x = (0.0, 1.0)
         cmd.rel_turn_in_place_envs = 0.3   # 2026-10-30: 0.1 -> 0.2, 2026-10-31: -> 0.3 (gedrag draait veel op de plaats)
+        if FASE == "pasjes":
+            cmd.ranges.lin_vel_x = (0.0, 0.35)
+            cmd.ranges.ang_vel_z = (0.0, 0.0)
+            cmd.rel_turn_in_place_envs = 0.0
+            cmd.resampling_time_range = (1.5, 4.0)
         cfg.commands["twist"] = BehaviorVelocityCommandCfg(**vars(cmd))
         cfg.commands["head_pose"] = _BehaviorHeadPoseCfg(**vars(cfg.commands["head_pose"]))
         for name in ("follow_distance", "follow_bearing", "turn_toward", "push_off", "back_off"):
@@ -1617,10 +1625,11 @@ def make_duckling_velocity_env_cfg(play: bool = False, rough: bool = False) -> M
     # van microduck (2 % -> 15 % pas op 1000), terwijl de gedrag-envs (50 %) vroeger veel in RUST stonden.
     # Run 19 nov (800-1500) schoof bij vx=0 15-28 cm weg in 8 s; 1150 (met gedrag) stond stil.
     if TASK != "volgen" and BEHAVIOR_FRAC == 0.0 and "standing_envs" in cfg.curriculum:
-        cfg.commands["twist"].rel_standing_envs = 0.25
+        p0 = 0.4 if FASE == "pasjes" else 0.25
+        cfg.commands["twist"].rel_standing_envs = p0
         cfg.curriculum["standing_envs"].params["standing_stages"] = [
-            {"step": 0, "rel_standing_envs": 0.25},
-            {"step": 1000 * 24, "rel_standing_envs": 0.3},
+            {"step": 0, "rel_standing_envs": p0},
+            {"step": 1000 * 24, "rel_standing_envs": max(p0, 0.3)},
         ]
     cfg.curriculum["head_pose_range"].params["range_stages"] = [
         {"step": 0, "ranges": _head_stage(0.05)},
