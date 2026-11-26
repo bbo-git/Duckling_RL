@@ -12,8 +12,9 @@
 //   staan / opstaan netwerk aan, stilstaan (rust: HOME vast; vanuit zitten: opstaan)
 //   zit             gaan zitten (vaste beweging naar zit_v2), 'staan' = opstaan
 //   rust aan|uit    aan = stilstaan zonder netwerk (= player), uit = netwerk ook bij stilstaan (balanceren)
-//   loop <f> [w]    netwerk, vooruit met f x 100%-snelheid (bv. loop 0.3), w = draaien in gr/s (+ = links)
-//   draai <w>       op de plaats draaien, w in gr/s
+//   loop <f> [w] [s] netwerk, vooruit met f x 100%-snelheid (bv. loop 0.3), w = draaien in gr/s (+ = links),
+//                   s = duur in seconden, daarna vanzelf staan (bv. loop 0.3 0 10)
+//   draai <w> [s]   op de plaats draaien, w in gr/s, s = duur in seconden
 //   imu             5 s lang gyro en zwaartekracht in romp-assen tonen (controle van de richtingen)
 //   imu ijk         IMU ijken: rechtop op tafel in HOME, 1x Enter (richting z, nulpunt, scheefstand), wordt bewaard
 //   imu test        controle gyro-richting t.o.v. versnellingsmeter (kantelen + draaien), fout = omdraaien
@@ -59,6 +60,7 @@ static Duck duck;
 static Mode mode = SLAP;
 static uint32_t mode_t0 = 0;
 static float tw_goal[3] = {0, 0, 0}, tw[3] = {0, 0, 0};
+static uint32_t tw_stop_ms = 0;   // 2026-11-26: loop/draai met duur: daarna vanzelf opdracht 0 (staan)
 // 2026-11-18: zoals tools/duckling_gedrag.py: stilstaan = HOME vasthouden (rust), netwerk alleen bij lopen
 // (in 0,25 s erin, in 1 s eruit); zitten/opstaan = vaste beweging (min-jerk) naar de zithouding zit_v2.
 enum Post { STAAT, GAAT_ZITTEN, ZIT, STAAT_OP };
@@ -402,14 +404,20 @@ static void command(String s) {
     if (r == "aan" || r == "uit") rust_aan = (r == "aan");
     Serial.printf("rust: %s\n", rust_aan ? "AAN (stilstaan = HOME, netwerk alleen bij lopen)" : "UIT (netwerk ook bij stilstaan = balanceren)");
   }
-  else if (c == "loop") {
-    int s2 = r.indexOf(' ');
-    float f = (s2 < 0 ? r : r.substring(0, s2)).toFloat(), w = s2 < 0 ? 0 : r.substring(s2 + 1).toFloat();
+  else if (c == "loop" || c == "draai") {   // loop <f> [w] [s] | draai <w> [s]   (s = duur in seconden, 0/leeg = blijven)
+    float a[3] = {0, 0, 0}; int n = 0; String rest = r; rest.trim();
+    while (rest.length() && n < 3) {
+      int sp = rest.indexOf(' ');
+      a[n++] = (sp < 0 ? rest : rest.substring(0, sp)).toFloat();
+      rest = sp < 0 ? "" : rest.substring(sp + 1); rest.trim();
+    }
+    float f = c == "loop" ? a[0] : 0, w = c == "loop" ? a[1] : a[0], dur = c == "loop" ? a[2] : a[1];
     tw_goal[0] = clampf(f, -0.5f, 1.0f) * V100; tw_goal[2] = clampf(w, -90, 90) / 57.3f; want_sit = false;
+    tw_stop_ms = dur > 0 ? millis() + (uint32_t)(dur * 1000) : 0;
     if (mode != NET) set_mode(NET);
-    Serial.printf("loop: vx %.3f m/s, wz %.0f gr/s\n", tw_goal[0], tw_goal[2] * 57.3f);
+    if (dur > 0) Serial.printf("%s: vx %.3f m/s, wz %.0f gr/s, %.1f s - daarna staan\n", c.c_str(), tw_goal[0], tw_goal[2] * 57.3f, dur);
+    else Serial.printf("%s: vx %.3f m/s, wz %.0f gr/s\n", c.c_str(), tw_goal[0], tw_goal[2] * 57.3f);
   }
-  else if (c == "draai") { want_sit = false; tw_goal[0] = 0; tw_goal[2] = clampf(r.toFloat(), -90, 90) / 57.3f; if (mode != NET) set_mode(NET); }
   else if (c == "imu") {
     if (r == "ijk") { for (int j = 0; j < NJ; j++) q_zet[j] = 0; set_mode(THUIS); imu_ijk(); }   // servo's vast in HOME = staande houding
     else if (r == "nul") { imu_measure_bias(); Serial.println("gyro-nulpunt gemeten"); }
@@ -504,6 +512,9 @@ void loop() {
     anim_pose(anim_ph, anim_a, q_out);
     servo_write_all(q_out, false);
   } else if (mode == NET) {
+    if (tw_stop_ms && (int32_t)(millis() - tw_stop_ms) >= 0) {
+      tw_stop_ms = 0; tw_goal[0] = tw_goal[2] = 0; Serial.println("tijd om: staan");
+    }
     // houding (= duckling_gedrag.py)
     post_t += DT_CTRL;
     if (post == STAAT && want_sit && rest_b <= 0.0f) { post = GAAT_ZITTEN; post_t = 0; Serial.println("houding: GAAT ZITTEN"); }
