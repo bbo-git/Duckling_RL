@@ -16,6 +16,7 @@
 //                   s = duur in seconden, daarna vanzelf staan (bv. loop 0.3 0 10)
 //   draai <w> [s]   op de plaats draaien, w in gr/s, s = duur in seconden
 //   passen <n> [f]  n passen vooruit (standaard op 30 %), dan vanzelf staan (bv. passen 3)
+//   oefen [k] [n] [f] [rust]  k keer: n passen op f, dan rust (standaard 5 1 0.25 1.5) = pasje, balans, pasje...
 //   imu             5 s lang gyro en zwaartekracht in romp-assen tonen (controle van de richtingen)
 //   imu ijk         IMU ijken: rechtop op tafel in HOME, 1x Enter (richting z, nulpunt, scheefstand), wordt bewaard
 //   imu test        controle gyro-richting t.o.v. versnellingsmeter (kantelen + draaien), fout = omdraaien
@@ -62,7 +63,8 @@ static Mode mode = SLAP;
 static uint32_t mode_t0 = 0;
 static float tw_goal[3] = {0, 0, 0}, tw[3] = {0, 0, 0};
 static uint32_t tw_stop_ms = 0;
-static int steps_left = 0; static float step_ph = 0;   // 2026-11-26: passen <n>: na n passen (halve gangcycli) staan   // 2026-11-26: loop/draai met duur: daarna vanzelf opdracht 0 (staan)
+static int steps_left = 0; static float step_ph = 0;
+static int oefen_left = 0, oefen_n = 1; static float oefen_f = 0.25f, oefen_rust = 1.5f; static uint32_t oefen_t = 0;   // 2026-11-26: oefen   // 2026-11-26: passen <n>: na n passen (halve gangcycli) staan   // 2026-11-26: loop/draai met duur: daarna vanzelf opdracht 0 (staan)
 // 2026-11-18: zoals tools/duckling_gedrag.py: stilstaan = HOME vasthouden (rust), netwerk alleen bij lopen
 // (in 0,25 s erin, in 1 s eruit); zitten/opstaan = vaste beweging (min-jerk) naar de zithouding zit_v2.
 enum Post { STAAT, GAAT_ZITTEN, ZIT, STAAT_OP };
@@ -310,6 +312,7 @@ static void set_mode(Mode m) {
   }
   if (m != THUIS) wip_deg = 0;
   if (m == SLAP) servo_limp();
+  if (m != NET) { oefen_left = 0; steps_left = 0; tw_stop_ms = 0; }   // geen schema meer na slap/thuis/val
   if (mode == NET && m != NET) log_frozen = true;                  // log van de netwerk-run bewaren (ook na slap/knop)
   if (m == NET && mode != NET) { log_n = 0; log_i = 0; log_frozen = false; }   // nieuwe run: nieuw log
   if ((m == THUIS || m == ANIM || m == NET) && mode == SLAP) {
@@ -400,13 +403,23 @@ static void command(String s) {
     }
   }
   else if (c == "anim") { anim_amp = r.length() ? clampf(r.toFloat(), 0, 1) : 1.0f; set_mode(ANIM); }
-  else if (c == "staan" || c == "opstaan") { steps_left = 0; tw_goal[0] = tw_goal[2] = 0; want_sit = false; if (mode != NET) set_mode(NET); }
+  else if (c == "staan" || c == "opstaan") { steps_left = 0; oefen_left = 0; tw_goal[0] = tw_goal[2] = 0; want_sit = false; if (mode != NET) set_mode(NET); }
   else if (c == "zit") { tw_goal[0] = tw_goal[2] = 0; want_sit = true; if (mode != NET) set_mode(NET); }
   else if (c == "rust") {   // rust aan (standaard, = player): stilstaan = HOME vasthouden. rust uit: netwerk ook bij stilstaan
     if (r == "aan" || r == "uit") rust_aan = (r == "aan");
     Serial.printf("rust: %s\n", rust_aan ? "AAN (stilstaan = HOME, netwerk alleen bij lopen)" : "UIT (netwerk ook bij stilstaan = balanceren)");
   }
-  else if (c == "passen") {   // passen <n> [f]: n passen vooruit op f x 100% (standaard 0.3), dan staan
+  else if (c == "oefen") {   // oefen [k] [n] [f] [rust]: k keer n passen op f, met rust ertussen (standaard 5 1 0.25 1.5)
+    float a[4] = {5, 1, 0.25f, 1.5f}; int i = 0; String rest = r; rest.trim();
+    while (rest.length() && i < 4) { int sp = rest.indexOf(' '); a[i++] = (sp < 0 ? rest : rest.substring(0, sp)).toFloat(); rest = sp < 0 ? "" : rest.substring(sp + 1); rest.trim(); }
+    oefen_n = max(1, (int)a[1]); oefen_f = clampf(a[2], 0.0f, 1.0f); oefen_rust = clampf(a[3], 0.3f, 10.0f);
+    oefen_left = max(1, (int)a[0]); tw_stop_ms = 0; want_sit = false;
+    if (mode != NET) set_mode(NET);
+    oefen_t = millis() + 1000;   // eerst 1 s staan
+    Serial.printf("oefen: %d keer %d pas(sen) op %.0f %%, %.1f s rust ertussen\n", oefen_left, oefen_n, oefen_f * 100, oefen_rust);
+  }
+  else if (c == "passen") {
+    oefen_left = 0;   // passen <n> [f]: n passen vooruit op f x 100% (standaard 0.3), dan staan
     int sp = r.indexOf(' ');
     int n = (sp < 0 ? r : r.substring(0, sp)).toInt(); float f = sp < 0 ? 0.3f : r.substring(sp + 1).toFloat();
     if (n <= 0) { Serial.println("gebruik: passen <n> [f], bv. passen 3"); return; }
@@ -417,7 +430,7 @@ static void command(String s) {
     Serial.printf("passen: %d stuks op %.0f %%\n", n, f * 100);
   }
   else if (c == "loop" || c == "draai") {
-    steps_left = 0;   // loop <f> [w] [s] | draai <w> [s]   (s = duur in seconden, 0/leeg = blijven)
+    steps_left = 0; oefen_left = 0;   // loop <f> [w] [s] | draai <w> [s]   (s = duur in seconden, 0/leeg = blijven)
     float a[3] = {0, 0, 0}; int n = 0; String rest = r; rest.trim();
     while (rest.length() && n < 3) {
       int sp = rest.indexOf(' ');
@@ -530,10 +543,18 @@ void loop() {
       if (floorf(ph * 2) != floorf(step_ph * 2) || ph < step_ph) {
         steps_left--;
         Serial.printf("pas (nog %d)\n", steps_left);
-        if (steps_left == 0) { tw_goal[0] = tw_goal[2] = 0; Serial.println("passen klaar: staan"); }
+        if (steps_left == 0) {
+          tw_goal[0] = tw_goal[2] = 0;
+          if (oefen_left > 0) { oefen_t = millis() + (uint32_t)(oefen_rust * 1000); Serial.printf("rust (nog %d keer)\n", oefen_left); }
+          else Serial.println("passen klaar: staan");
+        }
       }
       step_ph = ph;
     } else step_ph = duck.phase;
+    if (oefen_left > 0 && steps_left == 0 && oefen_t && (int32_t)(millis() - oefen_t) >= 0) {   // volgende ronde
+      oefen_t = 0; oefen_left--; steps_left = oefen_n; step_ph = duck.phase;
+      tw_goal[0] = oefen_f * V100; tw_goal[2] = 0;
+    }
     if (tw_stop_ms && (int32_t)(millis() - tw_stop_ms) >= 0) {
       tw_stop_ms = 0; tw_goal[0] = tw_goal[2] = 0; Serial.println("tijd om: staan");
     }
