@@ -333,6 +333,8 @@ class BehaviorVelocityCommand(StyleVelocityCommand):
         # 2026-11-26: rustige pasjes, hervat vanaf 600. 6 % = pasje van ~5 mm in 1 s, 9 % ~8 mm, 12 % ~10 mm,
         # 16 % ~13 mm, 20 % ~13 mm in 0.7 s. Eerst 300 iteraties alleen losse kleine pasjes.
         PASJES_STAGES = [(0, 1, 0.06, 0.09), (900, 2, 0.06, 0.12), (1200, 4, 0.06, 0.16), (1500, 8, 0.06, 0.20)]
+        # 2026-11-26 (950 tilde nog niet op): meer pasjes per episode, eerst 2-4 klein, kortere rust
+        PASJES_STAGES = [(0, 4, 0.06, 0.09), (1250, 4, 0.06, 0.12), (1500, 8, 0.06, 0.16), (1800, 8, 0.06, 0.20)]
 
     def _pasjes(self):
         n_env, dev = self.num_envs, self.device
@@ -358,7 +360,7 @@ class BehaviorVelocityCommand(StyleVelocityCommand):
         go = (st == 0) & (self._pj_t <= 0)
         if go.any():
             k = int(go.sum())
-            self._pj_left[go] = torch.randint(1, n_max + 1, (k,), device=dev)
+            self._pj_left[go] = torch.randint(2 if os.environ.get("DUCK_ROOSTER", "pasje") == "pasje" else 1, n_max + 1, (k,), device=dev)
             self._pj_f[go] = torch.empty(k, device=dev).uniform_(f_min, max(f_max, f_min))
             st = torch.where(go, torch.ones_like(st), st)
         # wachten -> lopen op de grens van een halve cyclus (pas begint met een voet)
@@ -368,7 +370,7 @@ class BehaviorVelocityCommand(StyleVelocityCommand):
         self._pj_left = torch.where(walk_cross, self._pj_left - 1, self._pj_left)
         done = (st == 2) & (self._pj_left <= 0)
         if done.any():
-            self._pj_t[done] = torch.empty(int(done.sum()), device=dev).uniform_(1.0, 2.5)
+            self._pj_t[done] = torch.empty(int(done.sum()), device=dev).uniform_(*((0.5, 1.5) if os.environ.get("DUCK_ROOSTER", "pasje") == "pasje" else (1.0, 2.5)))
             st = torch.where(done, torch.zeros_like(st), st)
         self._pj_state = st
         v = torch.where(st == 2, self._pj_f * self._v100[self.style], torch.zeros_like(self._pj_f))
@@ -1411,6 +1413,14 @@ def head_command_when_moving(env, command_name: str = "head_pose") -> torch.Tens
     return cmd * _moving(env).float()[:, None]
 
 
+def residual_l2(env) -> torch.Tensor:
+    """2026-11-26: residu-acties van de benen klein houden = dicht bij het pasje-rooster blijven.
+    850-950 hield de voet actief aan de grond (|actie| ~0.1), terwijl het rooster zonder netwerk wel optilt."""
+    a = env.action_manager.action
+    legs = [0, 1, 2, 3, 4, 9, 10, 11, 12, 13]   # trainingsvolgorde: kop = 5..8
+    return torch.mean(torch.square(a[:, legs]), -1)
+
+
 def stand_action_rate(env) -> torch.Tensor:
     """Action change per step, only for envs told to stand still: at rest the targets
     must not wiggle (2026-10-13: ankles and head kept jittering)."""
@@ -1535,6 +1545,8 @@ def make_duckling_velocity_env_cfg(play: bool = False, rough: bool = False) -> M
     R["com_forward"] = RewardTermCfg(func=com_forward, weight=5.0)   # 2026-10-14: CoM ahead of the feet (your walk)
     R["stance_grip"] = RewardTermCfg(func=stance_grip, weight=1.5)   # 2026-10-13: no sliding feet
     R["stand_action_rate"] = RewardTermCfg(func=stand_action_rate, weight=-1.0)   # at rest: no wiggling
+    if RESIDUAL and os.environ.get("DUCK_ROOSTER", "pasje") == "pasje":
+        R["residual_l2"] = RewardTermCfg(func=residual_l2, weight=-4.0)   # 2026-11-26: volg het pasje
     # task
     R["track_linear_velocity"].weight = 2.0      # 2026-10-15: 4 -> 2, the follow rewards lead (13: 2 -> 4)
     R["track_linear_velocity"].func = track_lin_two_scale      # 2026-10-14: fine 0.03 + coarse 0.10 m/s

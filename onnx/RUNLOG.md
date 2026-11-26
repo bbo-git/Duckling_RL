@@ -71,3 +71,11 @@ Regel: één verandering per run waar het kan.
   komt de voet maar ~3 mm los, ook met 10 mm opgetild in het rooster - het zwaartepunt staat nog op de rand van de zool.
 - v4: romp ~16 mm opzij + 8 gr leunen, voet 10 mm op. Open-loop: voet 7 mm los, 11-16 mm vooruit per pasje, kanteling
   max 11 gr (incl. het leunen). swing_clearance 3 -> 6, doel 8 mm. Hervat vanaf 750.
+- 850/950 (v4, hervat vanaf 750): voet blijft aan de grond (gemeten 850: voethoogteverschil 0.9 mm, rooster zonder
+  netwerk 4-6 mm; |actie| 0.1). Het netwerk stuurt het optillen tegen.
+
+## 2026-11-26 ~09-05 — PASJES V4 VANAF 0 (nieuwe run)
+- Geen oude gewoontes (600 = snelle pasjes, 850 = voet vasthouden): residu begint op 0 = precies het pasje-rooster v4.
+- residual_l2 -4 (benen dicht bij het rooster), 2-4 pasjes achter elkaar op 6-9 %, rust 0.5-1.5 s.
+  Curriculum: 1250: <=12 %; 1500: 8 pasjes <=16 %; 1800: <=20 %.
+- Player en firmware: netwerk standaard ook aan in rust.
