@@ -46,7 +46,7 @@ if PASJE["aan"]:
 # 2026-11-26 (v5, Jairo: "elke stap een element van de echte walk"): dynamische pasjes = het loopje zelf
 # (zelfde cadans, ~0.25 s per pas), maar op HOME-hoogte (geen kniesprong bij de start), voet 8 mm op,
 # geen afzet, minder doorveren. Quasi-statisch kan deze eend niet zonder enkel-roll (zie RUNLOG).
-PASJE_DYN = dict(aan=("--pasje-dyn" in sys.argv or os.environ.get("DUCK_PASJE") == "dyn"), tot=0.45, vlot=0.80, lift=0.008, cycle=0.75)   # v6: 0.75 s cyclus (0.37 s per pas) tot 45 %
+PASJE_DYN = dict(aan=("--pasje-dyn" in sys.argv or os.environ.get("DUCK_PASJE") == "dyn"), tot=0.45, vlot=0.80, lift=0.008, cycle=float(os.environ.get("DUCK_PAS_CYCLUS", "0.9")))   # v7: 0.9 s cyclus (0.45 s per pas) tot 45 % (v6: 0.75)
 # negative = walking backwards (2026-10-13): your walk at |speed|, relaxed, steps reversed
 TURNS = np.array([-90.0, -45.0, 0.0, 45.0, 90.0])          # deg/s, + = left
 SIDES = np.array([-0.010, 0.0, 0.010])                     # m per cycle, + = left
@@ -439,6 +439,7 @@ def main():
     ap.add_argument("--style", default=STYLE)
     ap.add_argument("--anchor", nargs="*", default=[], help="pct=bestand.npz, bv. 40=favorites/langzaam.npz")
     ap.add_argument("--view", action="store_true")
+    ap.add_argument("--pas-cyclus", type=float, default=None, help="met --pasje-dyn: cyclus in s (2 passen), standaard 0.9")
     ap.add_argument("--pasje-dyn", action="store_true", help="dynamische pasjes = het loopje op HOME-hoogte (v5, 2026-11-26)")
     ap.add_argument("--pasje", action="store_true", help="rustige quasi-statische pasjes tot 30 %% (2026-11-26)")
     ap.add_argument("--check", action="store_true")
@@ -451,6 +452,9 @@ def main():
         print(f"afspelen: {a.load} (precies de referentie die de training krijgt)")
         view(a.scene, GaitGrid(np.load(a.load)))
         return
+    if a.pas_cyclus:
+        PASJE_DYN["cycle"] = a.pas_cyclus
+        os.environ["DUCK_PAS_CYCLUS"] = str(a.pas_cyclus)   # ook voor de rekenprocessen
     style, anchors = make_style(a)
     if a.print is not None:
         print(json.dumps(asdict(style.params(a.print / 100)), indent=1))

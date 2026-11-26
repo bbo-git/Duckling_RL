@@ -106,3 +106,8 @@ Regel: één verandering per run waar het kan.
   Knie max 3.5 rad/s, romp ~9 mm opzij.
 - Nieuw in dyn: trunk_calm -0.5 (romp-roll/pitch-snelheid^2), both_feet_air -3 (geen hupjes); com_forward 3 mm voor de standvoet.
 - Curriculum: 20-30 %, 400: tot 40 %, 800: 8 passen tot 50 %.
+- 100 (v6): rustig (gyro 1.25, was 3.2), 31 mm vooruit, om en om binnen een reeks; bij het stoppen nog 2 extra stapjes.
+  Jairo: "nog langzamer net iets beter".
+- v7: cyclus 0.9 s (0.45 s per pas), pas 8 mm bij 20 %, 12 mm bij 30 %, knie max 2.8 rad/s, romp ~10 mm opzij. Hervat vanaf v6.
+- Tempo is nu een parameter: walk_speed.py --pasje-dyn --pas-cyclus <s> --grid grids/<naam>.npz; training DUCK_GRID=<naam>.npz;
+  player --rooster grids/<naam>.npz.

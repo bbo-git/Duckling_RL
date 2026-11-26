@@ -69,7 +69,9 @@ if ROOSTER == "pasje":
     STYLES = [("normaal", "gait_grid_pasje_v4.npz"), ("parmantig", "gait_grid_pasje_v4.npz")]
 elif ROOSTER == "dyn":
     # v6 (Jairo: "langzamer en rustiger"): 0.37 s per pas (was 0.25), pas 6.7 mm bij 20 %, 10 mm bij 30 %
-    STYLES = [("normaal", "gait_grid_pasje_v6.npz"), ("parmantig", "gait_grid_pasje_v6.npz")]
+    # v7: 0.45 s per pas. Ander tempo: rooster maken met walk_speed.py --pasje-dyn --pas-cyclus <s> en DUCK_GRID=<bestand>
+    _g = os.environ.get("DUCK_GRID", "gait_grid_pasje_v7.npz")
+    STYLES = [("normaal", _g), ("parmantig", _g)]
 STYLE_PROBS = (1.0, 0.0)   # 2026-11-19: eerst alleen "normaal" (one-hot blijft 2 lang: firmware ongewijzigd)
 # Taak: "lopen" (snelheidscommando's, eerst trainen) of "volgen" (persoon volgen, fine-tune daarna)
 TASK = os.environ.get("DUCK_TASK", "lopen")
