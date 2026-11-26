@@ -97,3 +97,4 @@ Regel: één verandering per run waar het kan.
   residual_l2 -1 (balans vraagt bijsturen), snelheid std 10/30 mm/s, swing_clearance 6 (doel 6.4 mm), om en om, rust 0.5-1.5 s.
 - Opgelost sinds de eerste pasjes-run (schok op de eend): kniesprong bij de start, "lopen"-drempel 0.02 m/s (20 % telde als
   stilstaan), firmware startte midden in een halve cyclus.
+- 100 (v5): reageert op duwtjes, maar zwaartepunt eerder naar achteren dan voren. com_forward in dyn: doel 3 mm voor de standvoeten bij lopen (was ~0 onder 20-30 %), voortgangsdrempel 0.02 -> 0.004 m/s. Hervat vanaf 100.

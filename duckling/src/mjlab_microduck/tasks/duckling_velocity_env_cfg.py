@@ -1366,13 +1366,16 @@ class com_forward:
             s = torch.where(back > 0, -torch.ones_like(s), s)
             into = torch.maximum(into, back)
         # 2026-10-15: one-sided - only falling SHORT of the target costs (it reached ~half of it)
-        short = torch.sign(s) * (torch.sign(s) * com100 * into - ahead)
+        tgt = com100 * into
+        if ROOSTER == "dyn":   # 2026-11-26 (Jairo: zwaartepunt gaat eerder naar achteren dan naar voren):
+            tgt = torch.where(s > 0.1, torch.clamp(tgt, min=0.003), tgt)   # pasjes: 3 mm voor de standvoet(en)
+        short = torch.sign(s) * (torch.sign(s) * tgt - ahead)
         r = torch.exp(-torch.square(torch.clamp(short, min=0.0) / std))
         # 2026-10-15: leaning only pays while it actually WALKS that way. volg7 leaned 9.4 mm
         # forward standing still (enkel 66 % saturated, trunk 4 mm lower) at 0.5 cm/s.
         v, _ = _yaw_frame_vel(env)
         want = env.command_manager.get_command(command_name)[:, 0]
-        progress = torch.where(want.abs() > 0.02, torch.clamp(v[:, 0] / want, 0.0, 1.0), torch.ones_like(want))
+        progress = torch.where(want.abs() > 0.004, torch.clamp(v[:, 0] / want, 0.0, 1.0), torch.ones_like(want))
         r = r * progress
         return torch.where(n > 0, r, torch.zeros_like(r)) * _moving(env, command_name).float()
 
