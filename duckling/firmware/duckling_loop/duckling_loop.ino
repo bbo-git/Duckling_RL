@@ -75,7 +75,8 @@ static bool idle_aan = false; static float idle_cur[4] = {0}, idle_goal[4] = {0}
 #define IDLE_KAAK 25.0f     // gr snavel open als hij "iets grappigs ziet"
 static float kaak_goal = 0; static uint32_t kaak_dicht = 0; static int kaak_keer = 0;
 // 2026-11-26: camera-kijken (rondkijken cam): beweging buiten het midden -> kijk die kant op
-static bool idle_cam = false; static uint32_t cam_sacc_ok = 0, cam_seen = 0, cam_funny_ok = 0;
+static bool idle_cam = false; static uint32_t cam_sacc_ok = 0, cam_seen = 0, cam_funny_ok = 0, head_moved = 0;
+static float idle_rate = 1.0f;   // camera-sprongen sneller (2 rad/s): de camera negeert beelden bij > 1.5 rad/s
 #define CAM_YAW_MAX 1.2f    // rad (~70 gr) zo ver mag hij naar beweging kijken
 #define CAM_PITCH_MAX 0.4f
 #define CAM_DEAD 0.06f      // rad (~3.5 gr): beweging zo dicht bij het midden = hij kijkt er al naar
@@ -616,14 +617,18 @@ void loop() {
     {   // rondkijken: alleen als hij stilstaat (geen opdracht, geen passen); anders rustig terug naar 0
       bool idle = idle_aan && fabsf(tw[0]) < 0.004f && fabsf(tw[2]) < 0.1f && steps_left == 0 && post == STAAT;
       // camera: beweging gezien (en de kop staat stil, anders ziet de camera zijn eigen draaien als beweging)
-      bool still = fabsf(idle_goal[0] - idle_cur[0]) < 0.02f && fabsf(idle_goal[1] - idle_cur[1]) < 0.02f;
+      bool moving_h = fabsf(idle_goal[0] - idle_cur[0]) > 0.02f || fabsf(idle_goal[1] - idle_cur[1]) > 0.02f;
+      if (moving_h) head_moved = millis();
+      // pas 0.8 s na het stilstaan van de kop naar de camera luisteren: de camera middelt over een paar beelden,
+      // en zag anders zijn eigen kopdraai nog als beweging (= de verkeerde kant op kijken)
+      bool still = !moving_h && millis() - head_moved > 800;
       if (idle && idle_cam && cam_t && millis() - cam_t < 300 && (cam_last.flags & 1) && still
           && (int32_t)(millis() - cam_sacc_ok) >= 0) {
         float bx = cam_last.bx_mrad / 1000.0f, by = cam_last.by_mrad / 1000.0f;
         if (fabsf(bx) > CAM_DEAD || fabsf(by) > CAM_DEAD) {   // buiten het midden: kijk die kant op
           idle_goal[0] = clampf(idle_cur[0] + bx, -CAM_YAW_MAX, CAM_YAW_MAX);
           idle_goal[1] = clampf(idle_cur[1] + by, -CAM_PITCH_MAX, CAM_PITCH_MAX);
-          idle_goal[2] = 0;
+          idle_goal[2] = 0; idle_rate = 2.0f;
         }
         else if ((int32_t)(millis() - cam_funny_ok) >= 0) {     // beweging recht voor hem: kopje scheef + snavel
           idle_goal[2] = (random(2) ? 1 : -1) * 0.20f;
@@ -634,6 +639,7 @@ void loop() {
         idle_next = millis() + 4000;                            // 4 s geen beweging -> weer zelf rondkijken
       }
       if (idle && (int32_t)(millis() - idle_next) >= 0) {
+        idle_rate = IDLE_RATE;
         idle_goal[0] = IDLE_YAW * (2.0f * random(1000) / 1000.0f - 1.0f);                 // kop-yaw
         idle_goal[1] = IDLE_PITCH * (2.0f * random(1000) / 1000.0f - 1.0f);               // kop-pitch
         idle_goal[2] = 0.0f;                                                              // roll alleen als hij iets ziet
@@ -646,7 +652,7 @@ void loop() {
       }
       for (int i = 0; i < 3; i++) {
         float g = idle ? idle_goal[i] : 0.0f;
-        idle_cur[i] += clampf(g - idle_cur[i], -IDLE_RATE * DT_CTRL, IDLE_RATE * DT_CTRL);
+        idle_cur[i] += clampf(g - idle_cur[i], -idle_rate * DT_CTRL, idle_rate * DT_CTRL);
       }
       idle_ph = idle ? idle_ph + DT_CTRL / IDLE_SHIFT_S : idle_ph;
       idle_t += clampf((idle ? 1.0f : 0.0f) - idle_t, -DT_CTRL / 1.5f, DT_CTRL / 1.5f);   // schuiven in/uit in 1.5 s
