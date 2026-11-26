@@ -424,7 +424,7 @@ static void command(String s) {
   else if (c == "zit") { tw_goal[0] = tw_goal[2] = 0; want_sit = true; if (mode != NET) set_mode(NET); }
   else if (c == "rondkijken") {   // rondkijken aan|uit: in rust kop rondkijken + langzame gewichtsverplaatsing
     idle_aan = (r == "aan" || r == "");
-    if (idle_aan) idle_next = millis();
+    if (idle_aan) { idle_next = millis(); want_sit = false; if (mode != NET) set_mode(NET); }   // netwerk aan (staan)
     Serial.printf("rondkijken: %s\n", idle_aan ? "AAN (alleen bij stilstaan)" : "uit");
   }
   else if (c == "rust") {   // rust aan (standaard, = player): stilstaan = HOME vasthouden. rust uit: netwerk ook bij stilstaan
