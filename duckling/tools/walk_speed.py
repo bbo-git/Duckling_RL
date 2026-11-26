@@ -46,7 +46,7 @@ if PASJE["aan"]:
 # 2026-11-26 (v5, Jairo: "elke stap een element van de echte walk"): dynamische pasjes = het loopje zelf
 # (zelfde cadans, ~0.25 s per pas), maar op HOME-hoogte (geen kniesprong bij de start), voet 8 mm op,
 # geen afzet, minder doorveren. Quasi-statisch kan deze eend niet zonder enkel-roll (zie RUNLOG).
-PASJE_DYN = dict(aan=("--pasje-dyn" in sys.argv or os.environ.get("DUCK_PASJE") == "dyn"), tot=0.45, vlot=0.80, lift=0.008, cycle=float(os.environ.get("DUCK_PAS_CYCLUS", "0.9")), com_ahead=0.004, push=10.0)   # v7: 0.9 s cyclus (0.45 s per pas) tot 45 % (v6: 0.75)
+PASJE_DYN = dict(aan=("--pasje-dyn" in sys.argv or os.environ.get("DUCK_PASJE") == "dyn"), tot=0.45, vlot=0.80, lift=0.008, cycle=float(os.environ.get("DUCK_PAS_CYCLUS", "0.9")), com_ahead=0.004, push=10.0, waddle=0.3)   # v7: 0.9 s cyclus (0.45 s per pas) tot 45 % (v6: 0.75)
 # negative = walking backwards (2026-10-13): your walk at |speed|, relaxed, steps reversed
 TURNS = np.array([-90.0, -45.0, 0.0, 45.0, 90.0])          # deg/s, + = left
 SIDES = np.array([-0.010, 0.0, 0.010])                     # m per cycle, + = left
@@ -163,6 +163,7 @@ def rule_params(base: G.GaitParams, s: float) -> G.GaitParams:
             # v8 (Jairo: "echt een voorwaartse beweging met gewicht en teen-afzet"): ook bij kleine pasjes
             p.com_ahead_m = L(p.com_ahead_m, PASJE_DYN["com_ahead"])
             p.push_deg = L(p.push_deg, PASJE_DYN["push"])
+            p.waddle *= 1 - (1 - PASJE_DYN["waddle"]) * k   # v9 (Jairo: te veel zijwaartse heupzwaai): romp-roll +-7 -> +-2.5 gr
             p.dip_m *= 1 - 0.7 * k; p.bob_m *= 1 - 0.7 * k
     if PASJE["aan"] and sv > 0:
 
