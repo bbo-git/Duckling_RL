@@ -74,6 +74,11 @@ static bool idle_aan = false; static float idle_cur[4] = {0}, idle_goal[4] = {0}
 #define IDLE_SHIFT_S 6.0f   // s per keer links-rechts-links
 #define IDLE_KAAK 25.0f     // gr snavel open als hij "iets grappigs ziet"
 static float kaak_goal = 0; static uint32_t kaak_dicht = 0; static int kaak_keer = 0;
+// 2026-11-26: camera-kijken (rondkijken cam): beweging buiten het midden -> kijk die kant op
+static bool idle_cam = false; static uint32_t cam_sacc_ok = 0, cam_seen = 0, cam_funny_ok = 0;
+#define CAM_YAW_MAX 1.2f    // rad (~70 gr) zo ver mag hij naar beweging kijken
+#define CAM_PITCH_MAX 0.4f
+#define CAM_DEAD 0.06f      // rad (~3.5 gr): beweging zo dicht bij het midden = hij kijkt er al naar
 static bool step_wait = false; static int last_half = -1; static float step_v = 0;   // 2026-11-26: = training: start op een halve cyclus, om en om
 static int oefen_left = 0, oefen_n = 1; static float oefen_f = 0.25f, oefen_rust = 1.5f; static uint32_t oefen_t = 0;   // 2026-11-26: oefen   // 2026-11-26: passen <n>: na n passen (halve gangcycli) staan   // 2026-11-26: loop/draai met duur: daarna vanzelf opdracht 0 (staan)
 // 2026-11-18: zoals tools/duckling_gedrag.py: stilstaan = HOME vasthouden (rust), netwerk alleen bij lopen
@@ -423,9 +428,10 @@ static void command(String s) {
   else if (c == "staan" || c == "opstaan") { steps_left = 0; oefen_left = 0; tw_goal[0] = tw_goal[2] = 0; want_sit = false; if (mode != NET) set_mode(NET); }
   else if (c == "zit") { tw_goal[0] = tw_goal[2] = 0; want_sit = true; if (mode != NET) set_mode(NET); }
   else if (c == "rondkijken") {   // rondkijken aan|uit: in rust kop rondkijken + langzame gewichtsverplaatsing
-    idle_aan = (r == "aan" || r == "");
+    idle_aan = (r == "aan" || r == "" || r == "cam");
+    idle_cam = (r == "cam");
     if (idle_aan) { idle_next = millis(); want_sit = false; if (mode != NET) set_mode(NET); }   // netwerk aan (staan)
-    Serial.printf("rondkijken: %s\n", idle_aan ? "AAN (alleen bij stilstaan)" : "uit");
+    Serial.printf("rondkijken: %s\n", idle_cam ? "CAMERA (kijkt naar beweging, anders zelf rond)" : idle_aan ? "AAN (alleen bij stilstaan)" : "uit");
   }
   else if (c == "rust") {   // rust aan (standaard, = player): stilstaan = HOME vasthouden. rust uit: netwerk ook bij stilstaan
     if (r == "aan" || r == "uit") rust_aan = (r == "aan");
@@ -609,6 +615,24 @@ void loop() {
     for (int j = 0; j < NJ; j++) { bl[j] = rest_b * act[j]; offs[j] = (1 - rest_b) * sit_amt * CROUCH[j]; }   // een correctie
     {   // rondkijken: alleen als hij stilstaat (geen opdracht, geen passen); anders rustig terug naar 0
       bool idle = idle_aan && fabsf(tw[0]) < 0.004f && fabsf(tw[2]) < 0.1f && steps_left == 0 && post == STAAT;
+      // camera: beweging gezien (en de kop staat stil, anders ziet de camera zijn eigen draaien als beweging)
+      bool still = fabsf(idle_goal[0] - idle_cur[0]) < 0.02f && fabsf(idle_goal[1] - idle_cur[1]) < 0.02f;
+      if (idle && idle_cam && cam_t && millis() - cam_t < 300 && (cam_last.flags & 1) && still
+          && (int32_t)(millis() - cam_sacc_ok) >= 0) {
+        float bx = cam_last.bx_mrad / 1000.0f, by = cam_last.by_mrad / 1000.0f;
+        if (fabsf(bx) > CAM_DEAD || fabsf(by) > CAM_DEAD) {   // buiten het midden: kijk die kant op
+          idle_goal[0] = clampf(idle_cur[0] + bx, -CAM_YAW_MAX, CAM_YAW_MAX);
+          idle_goal[1] = clampf(idle_cur[1] + by, -CAM_PITCH_MAX, CAM_PITCH_MAX);
+          idle_goal[2] = 0;
+        }
+        else if ((int32_t)(millis() - cam_funny_ok) >= 0) {     // beweging recht voor hem: kopje scheef + snavel
+          idle_goal[2] = (random(2) ? 1 : -1) * 0.20f;
+          kaak_keer = 1 + random(3); kaak_dicht = millis() + 300;
+          cam_funny_ok = millis() + 4000;
+        }
+        cam_seen = millis(); cam_sacc_ok = millis() + 600;      // even fixeren, dan opnieuw kijken
+        idle_next = millis() + 4000;                            // 4 s geen beweging -> weer zelf rondkijken
+      }
       if (idle && (int32_t)(millis() - idle_next) >= 0) {
         idle_goal[0] = IDLE_YAW * (2.0f * random(1000) / 1000.0f - 1.0f);                 // kop-yaw
         idle_goal[1] = IDLE_PITCH * (2.0f * random(1000) / 1000.0f - 1.0f);               // kop-pitch
@@ -628,7 +652,7 @@ void loop() {
       idle_t += clampf((idle ? 1.0f : 0.0f) - idle_t, -DT_CTRL / 1.5f, DT_CTRL / 1.5f);   // schuiven in/uit in 1.5 s
       float sh = idle_t * IDLE_SHIFT * sinf(6.2831853f * idle_ph);
       offs[HYAW] += idle_cur[0];
-      offs[HPITCH] += 0.6f * idle_cur[1]; offs[NECK] += 0.4f * idle_cur[1];
+      offs[HPITCH] += 0.6f * idle_cur[1]; offs[NECK] -= 0.4f * idle_cur[1];   // omhoog = kop-pitch + en nek - (elevatie = kop - nek)
       offs[HROLL] += idle_cur[2];
       offs[LHR] += sh; offs[RHR] -= sh;    // beide benen dezelfde kant op = romp schuift opzij
       // snavel: open-dicht-open (snaterend), dan dicht; bij lopen altijd dicht
