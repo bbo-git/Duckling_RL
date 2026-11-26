@@ -108,7 +108,7 @@ def herm(t, t0, t1, p0, p1, m0, m1):
 def mj(u):  # min-jerk 0..1
     u = np.clip(u, 0, 1); return u**3 * (10 - 15*u + 6*u*u)
 
-def maak(shift_s=0.5, swing_s=0.24, back_s=0.5, hold_s=1.0, half=5.0e-3, lift=0.020, com_y=0.0105, com_x_ahead=-0.002, fall_x=0.0, fall_y=0.6, land_pow=2.0, rise=0.3, strek=0.003, teen=25.0, hiel=12.0, rol=0.2, afzet=0.35, afzet_deg=15.0, top=0.3, stand_rol=0.0, voor=0.0, afzet_exp=1.4, stand_duw=0.0, duw_uit=0.25, breed=0.0,
+def maak(shift_s=0.5, swing_s=0.24, back_s=0.5, hold_s=1.0, half=5.0e-3, lift=0.020, com_y=0.004, com_x_ahead=-0.002, fall_x=0.0, fall_y=0.6, land_pow=2.0, rise=0.3, strek=0.003, teen=25.0, hiel=12.0, rol=0.2, afzet=0.35, afzet_deg=15.0, top=0.3, stand_rol=0.0, voor=0.0, afzet_exp=1.4, stand_duw=0.0, duw_uit=0.25, breed=0.0,
          head_roll=True, fps=50):
     """half = halve paslengte: in rust staan de voeten +-half verspringend; elke zwaai verplaatst de voet 4*half."""
     y0 = home_feet['left'][1]; xs = home_feet['left'][0]; z0 = home_feet['left'][2]

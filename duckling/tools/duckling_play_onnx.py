@@ -73,7 +73,7 @@ HOME_POS_DEG = {"hip_pitch": 0.0, "knee": 0.0, "ankle": 0.0}   # V2; V1 was -11.
 STYLES = [("normaal", "grids/gait_grid_normaal_v3.npz"), ("parmantig", "grids/gait_grid_parmantig_v5.npz")]
 # 2026-11-26: rustige pasjes (training DUCK_ROOSTER=pasje, standaard). --oud = het oude loopje-rooster
 if "--oud" not in sys.argv:
-    _g = "grids/gait_grid_stap_v1.npz"
+    _g = "grids/gait_grid_stap_v2.npz"
     if "--rooster" in sys.argv:   # 2026-11-26: ander rooster, bv. --rooster grids/gait_grid_pasje_v6.npz
         _g = sys.argv[sys.argv.index("--rooster") + 1]
     STYLES = [("normaal", _g), ("parmantig", _g)]

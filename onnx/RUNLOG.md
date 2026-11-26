@@ -154,3 +154,8 @@ Regel: één verandering per run waar het kan.
 - tools/stap_speler.py: open-loop afspelen met fysica (servo 1.6x standaard). tools/stap_grid.py: naar trainingsrooster
   grids/gait_grid_stap_v1.npz (alle vooruit-opdrachten = deze pas, 4.5 mm/s = 5 %; snelheidsknoop 0.02; walk_s0 0.02; com_ref).
 - Training (DUCK_GRID standaard stap_v1): pasjes 1-2 per keer op 5 %, 400: tot 4, 800: tot 8. Rest van de beloningen = v11.
+
+## 26 nov avond - stap-rooster v2
+- Echte eend (netwerk 200, stap v1) viel bij de eerste pas naar rechts: heup-roll stond al op de grens van 20 gr (het ontwerp gebruikte de hele uitslag), geen bijsturen meer mogelijk.
+- v2: zwaartepunt 4 mm opzij (was 10,5) -> heup-roll max 8 gr, romp-roll ~11 gr (was ~22, Jairo: "de helft of minder hellen"). Open lus staat bij 1.0x en 1.6x.
+- Training: vertraging netwerk->servo 0/20/40/60 ms (25/35/25/15 %), was 0/20/40.
