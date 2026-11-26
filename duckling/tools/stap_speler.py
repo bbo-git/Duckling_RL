@@ -2,7 +2,7 @@
 (2026-11-26). Stap ... pauze ... stap ... pauze, om en om, eindeloos.
 Gebruik (vanuit src/mjlab_microduck/robot/duckling):
   python ../../../../tools/stap_speler.py                       (stap_frames.npz uit tools/)
-  python ../../../../tools/stap_speler.py --kracht 1.6          (sterkere servo's, ~de echte eend)
+  python ../../../../tools/stap_speler.py --kracht 1.0          (zwakkere servo's van het simulatiemodel)
   python ../../../../tools/stap_speler.py --traag 2             (2x vertraagd afspelen, fysica loopt mee)
 Valt hij, dan begint hij na 1 s opnieuw. Spatie = pauze."""
 import os, sys, time, argparse, io, contextlib
@@ -13,7 +13,7 @@ import duckling_servo as DS
 
 ap = argparse.ArgumentParser()
 ap.add_argument("frames", nargs="?", default=os.path.join(HERE, "stap_frames.npz"))
-ap.add_argument("--kracht", type=float, default=1.0)
+ap.add_argument("--kracht", type=float, default=1.6)   # 2026-11-26: ~de echte eend (stap_gen is daarop afgesteld)
 ap.add_argument("--traag", type=float, default=1.0)
 a = ap.parse_args()
 F = np.load(a.frames)

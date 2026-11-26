@@ -32,7 +32,7 @@ def euler(roll, pitch=0.0, yaw=0.0):
 def com_xy():
     mujoco.mj_comPos(m, d); return d.subtree_com[1][:2].copy()
 
-def solve(feet, com_t, contact, q0=None, base0=None, head_free=True, w_com=1.0, iters=200, pitch=0.0, z_t=H0, w_z=0.3, w_reg=0.002):
+def solve(feet, com_t, contact, q0=None, base0=None, head_free=True, w_com=1.0, iters=200, pitch=0.0, z_t=H0, w_z=0.3, w_reg=0.002, foot_rot=None):
     """feet: {side: target site pos}; com_t: xy; contact: which feet carry weight (for reporting).
     unknowns: base x,y,z, base roll, leg joints, (head_roll)."""
     q = kin.home.copy() if q0 is None else q0.copy()
@@ -47,7 +47,8 @@ def solve(feet, com_t, contact, q0=None, base0=None, head_free=True, w_com=1.0, 
         for s, tgt in feet.items():
             mujoco.mj_jacSite(m, d, jacp, None, site[s]); mujoco.mj_jacBody(m, d, None, jacr, toe[s])
             R = d.xmat[toe[s]].reshape(3, 3)
-            e_rot = G._rotvec(R.T @ np.eye(3)) ; e_rot = R @ e_rot   # world-frame rotation error to identity
+            Rt = foot_rot.get(s, np.eye(3)) if foot_rot else np.eye(3)
+            e_rot = R @ G._rotvec(R.T @ Rt)   # rotatiefout in wereldframe (voet plat, of gekanteld voor de zwaaivoet)
             rows += [jacp[:, cols], jacr[:, cols] * 0.05]; errs += [tgt - d.site_xpos[site[s]], e_rot * 0.05]
         mujoco.mj_jacSubtreeCom(m, d, jcom, 1)
         rows.append(jcom[:2, cols] * w_com); errs.append((com_t - d.subtree_com[1][:2]) * w_com)
@@ -83,7 +84,7 @@ COM_DX = d.subtree_com[1][0] - home_feet['left'][0]       # HOME: zwaartepunt t.
 def mj(u):  # min-jerk 0..1
     u = np.clip(u, 0, 1); return u**3 * (10 - 15*u + 6*u*u)
 
-def maak(shift_s=0.5, swing_s=0.24, back_s=0.5, hold_s=1.0, half=5.0e-3, lift=0.012, com_y=0.0105, com_x_ahead=0.001, fall_x=0.8, fall_y=0.6, land_pow=2.0, rise=0.3, strek=0.003,
+def maak(shift_s=0.5, swing_s=0.24, back_s=0.5, hold_s=1.0, half=5.0e-3, lift=0.016, com_y=0.0105, com_x_ahead=0.001, fall_x=0.8, fall_y=0.6, land_pow=2.0, rise=0.3, strek=0.003, teen=15.0,
          head_roll=True, fps=50):
     """half = halve paslengte: in rust staan de voeten +-half verspringend; elke zwaai verplaatst de voet 4*half."""
     y0 = home_feet['left'][1]; xs = home_feet['left'][0]; z0 = home_feet['left'][2]
@@ -91,9 +92,9 @@ def maak(shift_s=0.5, swing_s=0.24, back_s=0.5, hold_s=1.0, half=5.0e-3, lift=0.
     feet = {'left': np.array([xs + half, y0, z0]), 'right': np.array([xs - half, -y0, z0])}   # links voor
     body_x = xs                                   # midden tussen de voeten (x)
     q, b = kin.home.copy(), np.array([0, 0, H0, 0.0])
-    def frame(f, cxy, contact, z=H0):
+    def frame(f, cxy, contact, z=H0, rot=None):
         nonlocal q, b
-        q, b, res, c = solve({k: v.copy() for k, v in f.items()}, cxy, None, q0=q, base0=b, iters=60, z_t=z)
+        q, b, res, c = solve({k: v.copy() for k, v in f.items()}, cxy, None, q0=q, base0=b, iters=60, z_t=z, foot_rot=rot)
         frames.append(dict(q=q.copy(), b=b.copy(), com=c.copy(), feet={k: v.copy() for k, v in f.items()},
                            contact=contact, res=res))
     for stand, swing in (('left', 'right'), ('right', 'left')):
@@ -117,7 +118,10 @@ def maak(shift_s=0.5, swing_s=0.24, back_s=0.5, hold_s=1.0, half=5.0e-3, lift=0.
             # 2026-11-26 (dubbele bounce): het zwaartepunt valt tijdens de zwaai al terug naar de zwaaikant (zoals het
             # in de fysica echt gaat); anders duwt de romp hem na het neerzetten terug en komt de voet nog eens los
             c = tgt + np.array([mj(u) * 2 * half * fall_x, -sgn * com_y * fall_y * mj(u)])
-            frame(f, c, (1, 0) if stand == 'left' else (0, 1), H0 + strek)   # standbeen gestrekt
+            # 2026-11-26 (Jairo: meer knie): teen wijst omlaag in de zwaai (hiel op) -> knie buigt verder
+            th = math.radians(teen) * math.sin(math.pi * u)
+            Ry = np.array([[math.cos(th), 0, math.sin(th)], [0, 1.0, 0], [-math.sin(th), 0, math.cos(th)]])
+            frame(f, c, (1, 0) if stand == 'left' else (0, 1), H0 + strek, {swing: Ry})   # standbeen gestrekt
         feet[swing] = end
         newmid = np.array([(feet['left'][0] + feet['right'][0]) / 2 + COM_DX, 0.0])
         c0 = frames[-1]['com'].copy()
