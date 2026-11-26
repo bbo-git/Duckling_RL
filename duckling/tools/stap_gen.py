@@ -92,10 +92,18 @@ def hiel_site(p_flat, th):
     heel = p_flat - v
     return heel + Ry_(th) @ v
 
+TOE_DX = 0.0170    # m: voorrand van de zool voor de voet-site
+def teen_site(p_flat, th):
+    """site-positie bij voetkanteling th (teen omlaag = positief) rond de voorrand van de zool (afzetten)."""
+    h = kin.site_above_floor['left']
+    v = np.array([-TOE_DX, 0.0, h])
+    toe = p_flat - v
+    return toe + Ry_(th) @ v
+
 def mj(u):  # min-jerk 0..1
     u = np.clip(u, 0, 1); return u**3 * (10 - 15*u + 6*u*u)
 
-def maak(shift_s=0.5, swing_s=0.24, back_s=0.5, hold_s=1.0, half=5.0e-3, lift=0.016, com_y=0.0105, com_x_ahead=0.001, fall_x=0.3, fall_y=0.6, land_pow=2.0, rise=0.3, strek=0.003, teen=15.0, hiel=6.0, rol=0.2,
+def maak(shift_s=0.5, swing_s=0.24, back_s=0.5, hold_s=1.0, half=5.0e-3, lift=0.016, com_y=0.0105, com_x_ahead=0.001, fall_x=0.3, fall_y=0.6, land_pow=2.0, rise=0.3, strek=0.003, teen=15.0, hiel=6.0, rol=0.2, afzet=0.35, afzet_deg=15.0,
          head_roll=True, fps=50):
     """half = halve paslengte: in rust staan de voeten +-half verspringend; elke zwaai verplaatst de voet 4*half."""
     y0 = home_feet['left'][1]; xs = home_feet['left'][0]; z0 = home_feet['left'][2]
@@ -113,17 +121,26 @@ def maak(shift_s=0.5, swing_s=0.24, back_s=0.5, hold_s=1.0, half=5.0e-3, lift=0.
         mid = np.array([(feet['left'][0] + feet['right'][0]) / 2 + COM_DX, 0.0])  # rust: zwaartepunt als in HOME t.o.v. de voeten
         tgt = np.array([feet[stand][0] + com_x_ahead, sgn * com_y])
         n = int(shift_s * fps)
-        for k in range(n):
-            u = mj((k + 1) / n); frame(feet, mid + u * (tgt - mid), (1, 1), H0 + strek * u)
-        # zwaai
         start = feet[swing].copy(); end = start.copy(); end[0] += 4 * half
+        push = 0.0
+        for k in range(n):
+            ul = (k + 1) / n; u = mj(ul)
+            # 2026-11-26 (Jairo: vloeiend afzetten en zwaaien): aan het eind van het verschuiven komt de hiel van de
+            # zwaaivoet al op (rollen over de teen), zodat de zwaai zonder stilstand doorloopt
+            push = math.radians(afzet_deg) * mj((ul - (1 - afzet)) / afzet) if afzet > 0 else 0.0
+            f = dict(feet); f[swing] = teen_site(start, push)
+            frame(f, mid + u * (tgt - mid), (1, 1), H0 + strek * u, {swing: Ry_(push)})
+        # zwaai: begint waar het afzetten eindigt (zelfde voetstand en -kanteling)
+        ps = teen_site(start, push)
+        v_h = np.array([HEEL_DX, 0.0, kin.site_above_floor['left']])
+        p0 = ps + v_h - Ry_(push) @ v_h          # hielpunt-baan zo dat hiel_site(p0, push) = ps
         n = int(swing_s * fps)
         land = None
         for k in range(n):
             u = (k + 1) / n
-            p = start + mj(u) * (end - start)
+            p = p0 + mj(u) * (end - p0)
             # 2026-11-26 (Jairo: snellere voetlift): snel op in de eerste 'rise' van de zwaai, dan zacht neer
-            p[2] = z0 + lift * (mj(u / rise) if u < rise else 1 - mj((u - rise) / (1 - rise)) ** 1.0)
+            p[2] = p0[2] + (end[2] - p0[2]) * mj(u) + lift * (mj(u / rise) if u < rise else 1 - mj((u - rise) / (1 - rise)) ** 1.0)
             f = dict(feet); f[swing] = p
             # zwaartepunt gaat verder naar voren (vallen in de pas), opzij blijft
             # 2026-11-26 (dubbele bounce): het zwaartepunt valt tijdens de zwaai al terug naar de zwaaikant (zoals het
@@ -131,7 +148,8 @@ def maak(shift_s=0.5, swing_s=0.24, back_s=0.5, hold_s=1.0, half=5.0e-3, lift=0.
             c = tgt + np.array([mj(u) * 2 * half * fall_x, -sgn * com_y * fall_y * mj(u)])
             # 2026-11-26 (Jairo: meer knie): teen omlaag in het begin van de zwaai (hiel op) -> knie buigt verder.
             # (Jairo: hiel-landing): daarna teen OP, zodat de hiel eerst landt; de hiel volgt de voetbaan p.
-            th = math.radians(teen) * math.sin(math.pi * min(u / 0.5, 1.0)) - math.radians(hiel) * mj((u - 0.25) / 0.6)   # vroeg: servo's lopen ~0.06 s achter
+            th = (push * (1 - mj(u / 0.4)) + math.radians(teen) * math.sin(math.pi * min(u / 0.5, 1.0))
+                  - math.radians(hiel) * mj((u - 0.25) / 0.6))   # vroeg: servo's lopen ~0.06 s achter
             f[swing] = hiel_site(p, th)
             frame(f, c, (1, 0) if stand == 'left' else (0, 1), H0 + strek, {swing: Ry_(th)})   # standbeen gestrekt
         feet[swing] = end
