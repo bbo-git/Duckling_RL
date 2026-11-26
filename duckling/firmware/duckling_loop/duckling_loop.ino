@@ -617,7 +617,11 @@ void loop() {
     {   // rondkijken: alleen als hij stilstaat (geen opdracht, geen passen); anders rustig terug naar 0
       bool idle = idle_aan && fabsf(tw[0]) < 0.004f && fabsf(tw[2]) < 0.1f && steps_left == 0 && post == STAAT;
       // camera: beweging gezien (en de kop staat stil, anders ziet de camera zijn eigen draaien als beweging)
-      bool moving_h = fabsf(idle_goal[0] - idle_cur[0]) > 0.02f || fabsf(idle_goal[1] - idle_cur[1]) > 0.02f;
+      // kop echt stil? = ook de bijsturing van het netwerk (q_out = wat de servo's krijgen), niet alleen het rondkijken
+      static float hq_prev[3] = {0, 0, 0};
+      float hq[3] = {q_out[HYAW], q_out[HPITCH] - q_out[NECK], q_out[HROLL]};
+      float hv = 0; for (int i = 0; i < 3; i++) { hv = fmaxf(hv, fabsf(hq[i] - hq_prev[i]) / DT_CTRL); hq_prev[i] = hq[i]; }
+      bool moving_h = fabsf(idle_goal[0] - idle_cur[0]) > 0.02f || fabsf(idle_goal[1] - idle_cur[1]) > 0.02f || hv > 0.08f;
       if (moving_h) head_moved = millis();
       // pas 0.8 s na het stilstaan van de kop naar de camera luisteren: de camera middelt over een paar beelden,
       // en zag anders zijn eigen kopdraai nog als beweging (= de verkeerde kant op kijken)
@@ -655,7 +659,7 @@ void loop() {
         idle_cur[i] += clampf(g - idle_cur[i], -idle_rate * DT_CTRL, idle_rate * DT_CTRL);
       }
       idle_ph = idle ? idle_ph + DT_CTRL / IDLE_SHIFT_S : idle_ph;
-      idle_t += clampf((idle ? 1.0f : 0.0f) - idle_t, -DT_CTRL / 1.5f, DT_CTRL / 1.5f);   // schuiven in/uit in 1.5 s
+      idle_t += clampf((idle && !idle_cam ? 1.0f : 0.0f) - idle_t, -DT_CTRL / 1.5f, DT_CTRL / 1.5f);   // schuiven in/uit in 1.5 s (niet bij camera: lijf beweegt de camera)
       float sh = idle_t * IDLE_SHIFT * sinf(6.2831853f * idle_ph);
       offs[HYAW] += idle_cur[0];
       offs[HPITCH] += 0.6f * idle_cur[1]; offs[NECK] -= 0.4f * idle_cur[1];   // omhoog = kop-pitch + en nek - (elevatie = kop - nek)
