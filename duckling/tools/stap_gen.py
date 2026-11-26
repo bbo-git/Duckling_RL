@@ -6,6 +6,9 @@ Een pas (rechts zwaait, links staat):
     zwaaikant; de neergezette voet vangt dat op.
   3 TERUG (dubbele steun, rustig): romp en zwaartepunt terug naar het midden tussen de voeten.
   4 STAAN: stilstaan in balans.
+2026-11-26 avond (Jairo: statische balans vergeten, rustige stapjes in dynamische balans): standaard nu 3 mm opzij
+(heup-roll ~6 gr, romp ~5 gr i.p.v. 20), korte zwaai 0,15 s: hij valt de pas in en de voet vangt hem op.
+Oude statische stap (v1): {"com_y":0.0105,"swing_s":0.24,"lift":0.02,"fall_y":0.6}.
 Een cyclus = pas rechts + pas links. Uitvoer: gewrichtshoeken (JOINT_ORDER van gait_gen) per 20 ms.
 Gebruik (vanuit src/mjlab_microduck/robot/duckling): python ../../../../tools/stap_gen.py ['{"swing_s":0.3}'] [uit.npz]
 Bekijken: python ../../../../tools/stap_speler.py"""
@@ -32,7 +35,7 @@ def euler(roll, pitch=0.0, yaw=0.0):
 def com_xy():
     mujoco.mj_comPos(m, d); return d.subtree_com[1][:2].copy()
 
-def solve(feet, com_t, contact, q0=None, base0=None, head_free=True, w_com=1.0, iters=200, pitch=0.0, z_t=H0, w_z=0.3, w_reg=0.002, foot_rot=None):
+def solve(feet, com_t, contact, q0=None, base0=None, head_free=True, w_com=1.0, iters=200, pitch=0.0, z_t=H0, w_z=0.3, w_reg=0.002, foot_rot=None, head_t=0.0, w_head=0.002):
     """feet: {side: target site pos}; com_t: xy; contact: which feet carry weight (for reporting).
     unknowns: base x,y,z, base roll, leg joints, (head_roll)."""
     q = kin.home.copy() if q0 is None else q0.copy()
@@ -57,7 +60,8 @@ def solve(feet, com_t, contact, q0=None, base0=None, head_free=True, w_com=1.0, 
         rz = np.zeros(nc); rz[2] = 1.0; rows.append(rz[None] * w_z); errs.append(np.array([(z_t - b[2]) * w_z]))
         for k, n in enumerate(names):
             if n in ("head_roll", "left_hip_yaw", "right_hip_yaw"):
-                rr = np.zeros(nc); rr[4 + k] = 1.0; rows.append(rr[None] * w_reg); errs.append(np.array([(0 - q[qi[n]]) * w_reg]))
+                ww, t0 = (w_head, head_t) if n == "head_roll" else (w_reg, 0.0)   # 2026-11-26 avond: kop leunt mee
+                rr = np.zeros(nc); rr[4 + k] = 1.0; rows.append(rr[None] * ww); errs.append(np.array([(t0 - q[qi[n]]) * ww]))
         # zachte regularisatie: kop-roll en hip-yaw liever 0, hoogte liever H0
         A = np.vstack(rows); e = np.concatenate(errs)
         reg = np.zeros(len(cols)); 
@@ -92,6 +96,15 @@ def hiel_site(p_flat, th):
     heel = p_flat - v
     return heel + Ry_(th) @ v
 
+EDGE_DY = 0.0131   # m: buitenrand van de zool naast de voet-site (links +y, rechts -y)
+def Rx_(ph):
+    return np.array([[1.0, 0, 0], [0, math.cos(ph), -math.sin(ph)], [0, math.sin(ph), math.cos(ph)]])
+def rand_site(p_flat, ph, sgn):
+    """2026-11-26 avond: standvoet kantelt om zijn BUITENrand (binnenkant op, ph>0 = zoveel graden); sgn +1 = links."""
+    h = kin.site_above_floor['left']
+    e = np.array([0.0, sgn * EDGE_DY, -h])
+    return p_flat + e + Rx_(-sgn * ph) @ (-e)
+
 TOE_DX = 0.0170    # m: voorrand van de zool voor de voet-site
 def teen_site(p_flat, th):
     """site-positie bij voetkanteling th (teen omlaag = positief) rond de voorrand van de zool (afzetten)."""
@@ -108,7 +121,7 @@ def herm(t, t0, t1, p0, p1, m0, m1):
 def mj(u):  # min-jerk 0..1
     u = np.clip(u, 0, 1); return u**3 * (10 - 15*u + 6*u*u)
 
-def maak(shift_s=0.5, swing_s=0.24, back_s=0.5, hold_s=1.0, half=5.0e-3, lift=0.020, com_y=0.0105, com_x_ahead=-0.002, fall_x=0.0, fall_y=0.6, land_pow=2.0, rise=0.3, strek=0.003, teen=25.0, hiel=12.0, rol=0.2, afzet=0.35, afzet_deg=15.0, top=0.3, stand_rol=0.0, voor=0.0, afzet_exp=1.4, stand_duw=0.0, duw_uit=0.25, breed=0.0,
+def maak(shift_s=0.5, swing_s=0.15, back_s=0.5, hold_s=1.0, half=5.0e-3, lift=0.016, com_y=0.003, com_x_ahead=-0.002, fall_x=0.0, fall_y=0.8, land_pow=2.0, rise=0.3, strek=0.003, teen=25.0, hiel=12.0, rol=0.2, afzet=0.35, afzet_deg=15.0, top=0.3, stand_rol=0.0, voor=0.0, afzet_exp=1.4, stand_duw=0.0, duw_uit=0.25, breed=0.0, kantel=0.0, kantel_in=0.3, kop=0.0,
          head_roll=True, fps=50):
     """half = halve paslengte: in rust staan de voeten +-half verspringend; elke zwaai verplaatst de voet 4*half."""
     y0 = home_feet['left'][1]; xs = home_feet['left'][0]; z0 = home_feet['left'][2]
@@ -119,7 +132,10 @@ def maak(shift_s=0.5, swing_s=0.24, back_s=0.5, hold_s=1.0, half=5.0e-3, lift=0.
     q, b = kin.home.copy(), np.array([0, 0, H0, 0.0])
     def frame(f, cxy, contact, z=H0, rot=None):
         nonlocal q, b
-        q, b, res, c = solve({k: v.copy() for k, v in f.items()}, cxy, None, q0=q, base0=b, iters=60, z_t=z, foot_rot=rot)
+        # kop-roll mee naar de standkant, evenredig met hoe ver het zwaartepunt opzij staat
+        ht = math.radians(kop) * cxy[1] / max(com_y, 1e-4)
+        q, b, res, c = solve({k: v.copy() for k, v in f.items()}, cxy, None, q0=q, base0=b, iters=60, z_t=z, foot_rot=rot,
+                             head_t=ht, w_head=0.05 if kop else 0.002)
         frames.append(dict(q=q.copy(), b=b.copy(), com=c.copy(), feet={k: v.copy() for k, v in f.items()},
                            contact=contact, res=res))
     for stand, swing in (('left', 'right'), ('right', 'left')):
@@ -171,8 +187,12 @@ def maak(shift_s=0.5, swing_s=0.24, back_s=0.5, hold_s=1.0, half=5.0e-3, lift=0.
             # 2026-11-26 (Jairo: gewicht bij het landen): standvoet duwt kort af over de teen rond het landen, zodat het
             # gewicht geleidelijk naar de landende voet gaat
             sd = math.radians(stand_duw) * mj((u - 0.6) / 0.4)
-            f[stand] = teen_site(feet[stand], sd)
-            frame(f, c, (1, 0) if stand == 'left' else (0, 1), H0 + strek, {swing: Ry_(th), stand: Ry_(sd)})   # standbeen gestrekt
+            ph = math.radians(kantel) * math.sin(math.pi * u)   # 2026-11-26 avond: wiegen op de buitenrand
+            if kantel:
+                f[stand] = rand_site(feet[stand], ph, sgn); rs = Rx_(-sgn * ph)
+            else:
+                f[stand] = teen_site(feet[stand], sd); rs = Ry_(sd)
+            frame(f, c, (1, 0) if stand == 'left' else (0, 1), H0 + strek, {swing: Ry_(th), stand: rs})   # standbeen gestrekt
         feet[swing] = end
         # 2026-11-26 (Jairo: de teen van het standbeen moet afrollen): na het landen gaat het gewicht naar de voorste voet
         # en rolt de achterste (de standvoet van deze pas) af over de teen: hiel op; zo staat hij klaar voor de volgende pas

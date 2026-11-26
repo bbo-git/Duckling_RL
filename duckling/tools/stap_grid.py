@@ -7,7 +7,7 @@ Gebruik (vanuit src/mjlab_microduck/robot/duckling):
 import os, sys, json, math
 import numpy as np
 HERE = os.path.dirname(os.path.abspath(__file__)); sys.path.insert(0, HERE)
-out = sys.argv[1] if len(sys.argv) > 1 else "grids/gait_grid_stap_v1.npz"
+out = sys.argv[1] if len(sys.argv) > 1 else "grids/gait_grid_stap_v3.npz"
 kw = json.loads(sys.argv[2]) if len(sys.argv) > 2 else {}
 sys.argv = sys.argv[:1]
 import stap_gen as S
