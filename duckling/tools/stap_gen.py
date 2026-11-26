@@ -81,10 +81,21 @@ import json
 kin._set(np.array([0, 0, H0]), np.array([1.0, 0, 0, 0]), kin.home); mujoco.mj_comPos(m, d)
 COM_DX = d.subtree_com[1][0] - home_feet['left'][0]       # HOME: zwaartepunt t.o.v. de voeten (x)
 
+HEEL_DX = 0.0171   # m: achterrand van de zool achter de voet-site
+def Ry_(th):
+    return np.array([[math.cos(th), 0, math.sin(th)], [0, 1.0, 0], [-math.sin(th), 0, math.cos(th)]])
+def hiel_site(p_flat, th):
+    """site-positie bij voetkanteling th (teen op = negatief) zo, dat de hiel op dezelfde plek blijft als bij een
+    platte voet op p_flat."""
+    h = kin.site_above_floor['left']
+    v = np.array([HEEL_DX, 0.0, h])
+    heel = p_flat - v
+    return heel + Ry_(th) @ v
+
 def mj(u):  # min-jerk 0..1
     u = np.clip(u, 0, 1); return u**3 * (10 - 15*u + 6*u*u)
 
-def maak(shift_s=0.5, swing_s=0.24, back_s=0.5, hold_s=1.0, half=5.0e-3, lift=0.016, com_y=0.0105, com_x_ahead=0.001, fall_x=0.8, fall_y=0.6, land_pow=2.0, rise=0.3, strek=0.003, teen=15.0,
+def maak(shift_s=0.5, swing_s=0.24, back_s=0.5, hold_s=1.0, half=5.0e-3, lift=0.016, com_y=0.0105, com_x_ahead=0.001, fall_x=0.3, fall_y=0.6, land_pow=2.0, rise=0.3, strek=0.003, teen=15.0, hiel=6.0, rol=0.2,
          head_roll=True, fps=50):
     """half = halve paslengte: in rust staan de voeten +-half verspringend; elke zwaai verplaatst de voet 4*half."""
     y0 = home_feet['left'][1]; xs = home_feet['left'][0]; z0 = home_feet['left'][2]
@@ -118,16 +129,21 @@ def maak(shift_s=0.5, swing_s=0.24, back_s=0.5, hold_s=1.0, half=5.0e-3, lift=0.
             # 2026-11-26 (dubbele bounce): het zwaartepunt valt tijdens de zwaai al terug naar de zwaaikant (zoals het
             # in de fysica echt gaat); anders duwt de romp hem na het neerzetten terug en komt de voet nog eens los
             c = tgt + np.array([mj(u) * 2 * half * fall_x, -sgn * com_y * fall_y * mj(u)])
-            # 2026-11-26 (Jairo: meer knie): teen wijst omlaag in de zwaai (hiel op) -> knie buigt verder
-            th = math.radians(teen) * math.sin(math.pi * u)
-            Ry = np.array([[math.cos(th), 0, math.sin(th)], [0, 1.0, 0], [-math.sin(th), 0, math.cos(th)]])
-            frame(f, c, (1, 0) if stand == 'left' else (0, 1), H0 + strek, {swing: Ry})   # standbeen gestrekt
+            # 2026-11-26 (Jairo: meer knie): teen omlaag in het begin van de zwaai (hiel op) -> knie buigt verder.
+            # (Jairo: hiel-landing): daarna teen OP, zodat de hiel eerst landt; de hiel volgt de voetbaan p.
+            th = math.radians(teen) * math.sin(math.pi * min(u / 0.5, 1.0)) - math.radians(hiel) * mj((u - 0.25) / 0.6)   # vroeg: servo's lopen ~0.06 s achter
+            f[swing] = hiel_site(p, th)
+            frame(f, c, (1, 0) if stand == 'left' else (0, 1), H0 + strek, {swing: Ry_(th)})   # standbeen gestrekt
         feet[swing] = end
         newmid = np.array([(feet['left'][0] + feet['right'][0]) / 2 + COM_DX, 0.0])
         c0 = frames[-1]['com'].copy()
         n = int(back_s * fps)
         for k in range(n):
-            u = mj((k + 1) / n); frame(feet, c0 + u * (newmid - c0), (1, 1), H0 + strek * (1 - u))
+            u = mj((k + 1) / n)
+            # hiel staat, voet rolt af (teen ontspant) in het eerste deel van 'terug'
+            th = -math.radians(hiel) * (1 - mj((k + 1) / max(1, rol * n)))
+            f = dict(feet); f[swing] = hiel_site(end, th)
+            frame(f, c0 + u * (newmid - c0), (1, 1), H0 + strek * (1 - u), {swing: Ry_(th)})
         for k in range(int(hold_s * fps)):
             frame(feet, newmid, (1, 1))
     return frames
