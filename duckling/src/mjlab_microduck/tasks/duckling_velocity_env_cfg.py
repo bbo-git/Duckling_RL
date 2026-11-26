@@ -61,7 +61,7 @@ STYLES = [   # (naam, rooster in robot/duckling/grids/)
 # pasje-rooster = rustige, quasi-statische pasjes tot 30 % (1 s per pasje bij 6 %), daarboven het oude loopje.
 # Beide plekken hetzelfde rooster: de one-hot blijft 2 lang, dus hervatten en firmware blijven passen.
 if os.environ.get("DUCK_ROOSTER", "pasje") == "pasje":
-    STYLES = [("normaal", "gait_grid_pasje_v2.npz"), ("parmantig", "gait_grid_pasje_v2.npz")]
+    STYLES = [("normaal", "gait_grid_pasje_v3.npz"), ("parmantig", "gait_grid_pasje_v3.npz")]
 STYLE_PROBS = (1.0, 0.0)   # 2026-11-19: eerst alleen "normaal" (one-hot blijft 2 lang: firmware ongewijzigd)
 # Taak: "lopen" (snelheidscommando's, eerst trainen) of "volgen" (persoon volgen, fine-tune daarna)
 TASK = os.environ.get("DUCK_TASK", "lopen")

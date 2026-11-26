@@ -63,3 +63,7 @@ Regel: één verandering per run waar het kan.
 - Oud rooster terug: DUCK_ROOSTER=oud (training), --oud (player).
 - v1 (romp 20 mm opzij) leek op "skien op een steile helling" (Jairo: eerder 5 mm). -> gait_grid_pasje_v2.npz: frac 0.25
   = ~6 mm opzij. Open-loop: 6-12 % staat, kanteling max 8.5 gr, gyro 1.3-2.0 rad/s. Training gebruikt v2.
+- v2 (6 mm) is niet quasi-statisch: binnenrand zool zit 11 mm naast het midden. Zonder enkel-roll kantelt de zool
+  als de romp alleen opzij schuift -> v3: romp ~11 mm opzij + licht leunen naar de standvoet (waddle 0.5).
+  Open-loop: 6-12 % staat, kanteling max 6.3-7.2 gr (beste tot nu), gyro 1.3-1.8; vanaf 16 % valt hij zonder netwerk.
+  Training gebruikt gait_grid_pasje_v3.npz.
