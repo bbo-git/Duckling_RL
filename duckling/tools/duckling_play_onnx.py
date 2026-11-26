@@ -37,6 +37,7 @@ Keys in the viewer (keyboard focus on the MuJoCo window):
 
 import argparse
 import os
+import sys
 import time
 
 import mujoco

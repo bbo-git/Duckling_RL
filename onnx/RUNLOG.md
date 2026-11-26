@@ -61,3 +61,5 @@ Regel: één verandering per run waar het kan.
   dus pasjes op 20 % telden als STILSTAAN (stand_still-beloning, geen contactschema, rust-modus op de eend).
 - Pasjes-curriculum: it 600-900: 1 pas 6-9 %; 900: 1-2, <=12 %; 1200: 1-4, <=16 %; 1500: 1-8, <=20 %.
 - Oud rooster terug: DUCK_ROOSTER=oud (training), --oud (player).
+- v1 (romp 20 mm opzij) leek op "skien op een steile helling" (Jairo: eerder 5 mm). -> gait_grid_pasje_v2.npz: frac 0.25
+  = ~6 mm opzij. Open-loop: 6-12 % staat, kanteling max 8.5 gr, gyro 1.3-2.0 rad/s. Training gebruikt v2.
