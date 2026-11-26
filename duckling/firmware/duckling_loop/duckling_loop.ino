@@ -273,8 +273,13 @@ struct Rec { uint32_t t; int16_t gyro[3], grav[3], vx, wz, act[NJ], q[NJ]; uint8
 static Rec logbuf[LOG_N];
 static int log_i = 0, log_n = 0;
 static bool log_frozen = false;
+static uint32_t log_stop_ms = 0;   // 2026-11-26: log bevriezen 2 s na de laatste pas van passen/oefen
+static void log_new() { log_n = 0; log_i = 0; log_frozen = false; log_stop_ms = 0; }
 static void log_add() {
   if (log_frozen) return;
+  if (log_stop_ms && (int32_t)(millis() - log_stop_ms) >= 0) {
+    log_frozen = true; log_stop_ms = 0; Serial.println("log bevroren (2 s na de laatste pas) - typ 'log'"); return;
+  }
   Rec& r = logbuf[log_i];
   r.t = millis();
   for (int i = 0; i < 3; i++) { r.gyro[i] = (int16_t)(gyro_b[i] * 1000); r.grav[i] = (int16_t)(grav[i] * 10000); }
@@ -417,6 +422,7 @@ static void command(String s) {
     oefen_left = max(1, (int)a[0]); tw_stop_ms = 0; want_sit = false;
     if (mode != NET) set_mode(NET);
     oefen_t = millis() + 1000;   // eerst 1 s staan
+    log_new();   // log = precies deze oefening (bevriest 2 s na de laatste pas)
     Serial.printf("oefen: %d keer %d pas(sen) op %.0f %%, %.1f s rust ertussen\n", oefen_left, oefen_n, oefen_f * 100, oefen_rust);
   }
   else if (c == "passen") {
@@ -426,6 +432,7 @@ static void command(String s) {
     if (n <= 0) { Serial.println("gebruik: passen <n> [f], bv. passen 3"); return; }
     steps_left = n; tw_stop_ms = 0; want_sit = false;
     step_wait = true; step_v = clampf(f, 0.0f, 1.0f) * V100; tw_goal[0] = tw_goal[2] = 0;
+    log_new();   // log = precies deze passen
     if (mode != NET) set_mode(NET);
     step_ph = duck.phase;
     Serial.printf("passen: %d stuks op %.0f %%\n", n, f * 100);
@@ -552,7 +559,7 @@ void loop() {
           last_half = 1 - h;
           tw_goal[0] = tw_goal[2] = 0;
           if (oefen_left > 0) { oefen_t = millis() + (uint32_t)(oefen_rust * 1000); Serial.printf("rust (nog %d keer)\n", oefen_left); }
-          else Serial.println("passen klaar: staan");
+          else { Serial.println("passen klaar: staan"); log_stop_ms = millis() + 2000; }
         }
       }
       step_ph = ph;
