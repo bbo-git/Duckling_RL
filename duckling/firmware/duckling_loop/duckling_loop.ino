@@ -621,23 +621,25 @@ void loop() {
       static float hq_prev[3] = {0, 0, 0};
       float hq[3] = {q_out[HYAW], q_out[HPITCH] - q_out[NECK], q_out[HROLL]};
       float hv = 0; for (int i = 0; i < 3; i++) { hv = fmaxf(hv, fabsf(hq[i] - hq_prev[i]) / DT_CTRL); hq_prev[i] = hq[i]; }
-      bool moving_h = fabsf(idle_goal[0] - idle_cur[0]) > 0.02f || fabsf(idle_goal[1] - idle_cur[1]) > 0.02f || hv > 0.08f;
+      bool moving_h = fabsf(idle_goal[0] - idle_cur[0]) > 0.02f || fabsf(idle_goal[1] - idle_cur[1]) > 0.02f ;   // (netwerk-bijsturing hv telt niet mee: die is er altijd)
       if (moving_h) head_moved = millis();
       // pas 0.8 s na het stilstaan van de kop naar de camera luisteren: de camera middelt over een paar beelden,
       // en zag anders zijn eigen kopdraai nog als beweging (= de verkeerde kant op kijken)
-      bool still = !moving_h && millis() - head_moved > 800;
+      bool still = !moving_h && millis() - head_moved > 500;
       if (idle && idle_cam && cam_t && millis() - cam_t < 300 && (cam_last.flags & 1) && still
           && (int32_t)(millis() - cam_sacc_ok) >= 0) {
         float bx = cam_last.bx_mrad / 1000.0f, by = cam_last.by_mrad / 1000.0f;
+        Serial.printf("ziet beweging: %+.0f / %+.0f gr, intensiteit %d, grootte %d\n", bx * 57.3f, by * 57.3f, cam_last.mint, cam_last.msize);
+        bool zwaai = cam_last.mint >= 2;   // duidelijke beweging (zwaaien): altijd reageren
         if (fabsf(bx) > CAM_DEAD || fabsf(by) > CAM_DEAD) {   // buiten het midden: kijk die kant op
           idle_goal[0] = clampf(idle_cur[0] + bx, -CAM_YAW_MAX, CAM_YAW_MAX);
           idle_goal[1] = clampf(idle_cur[1] + by, -CAM_PITCH_MAX, CAM_PITCH_MAX);
           idle_goal[2] = 0; idle_rate = 2.0f;
         }
-        else if ((int32_t)(millis() - cam_funny_ok) >= 0) {     // beweging recht voor hem: kopje scheef + snavel
+        if ((zwaai || (fabsf(bx) <= CAM_DEAD && fabsf(by) <= CAM_DEAD)) && (int32_t)(millis() - cam_funny_ok) >= 0) {   // zwaaien of recht voor hem: kopje scheef + snavel
           idle_goal[2] = (random(2) ? 1 : -1) * 0.20f;
           kaak_keer = 1 + random(3); kaak_dicht = millis() + 300;
-          cam_funny_ok = millis() + 4000;
+          cam_funny_ok = millis() + 2500;
         }
         cam_seen = millis(); cam_sacc_ok = millis() + 600;      // even fixeren, dan opnieuw kijken
         idle_next = millis() + 4000;                            // 4 s geen beweging -> weer zelf rondkijken
