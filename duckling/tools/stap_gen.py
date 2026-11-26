@@ -108,7 +108,7 @@ def herm(t, t0, t1, p0, p1, m0, m1):
 def mj(u):  # min-jerk 0..1
     u = np.clip(u, 0, 1); return u**3 * (10 - 15*u + 6*u*u)
 
-def maak(shift_s=0.5, swing_s=0.24, back_s=0.5, hold_s=1.0, half=5.0e-3, lift=0.020, com_y=0.0105, com_x_ahead=-0.002, fall_x=0.0, fall_y=0.6, land_pow=2.0, rise=0.3, strek=0.003, teen=25.0, hiel=12.0, rol=0.2, afzet=0.35, afzet_deg=15.0, top=0.3, stand_rol=0.0, voor=0.0, afzet_exp=1.4,
+def maak(shift_s=0.5, swing_s=0.24, back_s=0.5, hold_s=1.0, half=5.0e-3, lift=0.020, com_y=0.0105, com_x_ahead=-0.002, fall_x=0.0, fall_y=0.6, land_pow=2.0, rise=0.3, strek=0.003, teen=25.0, hiel=12.0, rol=0.2, afzet=0.35, afzet_deg=15.0, top=0.3, stand_rol=0.0, voor=0.0, afzet_exp=1.4, stand_duw=0.0, duw_uit=0.25, breed=0.0,
          head_roll=True, fps=50):
     """half = halve paslengte: in rust staan de voeten +-half verspringend; elke zwaai verplaatst de voet 4*half."""
     y0 = home_feet['left'][1]; xs = home_feet['left'][0]; z0 = home_feet['left'][2]
@@ -128,6 +128,7 @@ def maak(shift_s=0.5, swing_s=0.24, back_s=0.5, hold_s=1.0, half=5.0e-3, lift=0.
         tgt = np.array([feet[stand][0] + com_x_ahead, sgn * com_y])
         n = int(shift_s * fps)
         start = feet[swing].copy(); end = start.copy(); end[0] += 4 * half
+        end[1] = (-sgn) * (y0 + breed)   # 2026-11-26: zwaaivoet landt iets breder: vangt het zijwaarts vallen eerder op
         push = 0.0
         T_all = shift_s + swing_s
         x_end = tgt[0] + 2 * half * fall_x                      # zwaartepunt-x aan het eind van de zwaai
@@ -167,7 +168,11 @@ def maak(shift_s=0.5, swing_s=0.24, back_s=0.5, hold_s=1.0, half=5.0e-3, lift=0.
             # voetkanteling: doorlopen vanuit het afzetten (teen omlaag, meer knie), dan teen op voor de hiel-landing
             th = herm(u, 0, top, P, peak, m0, 0.0) if u < top else herm(u, top, 0.8, peak, -math.radians(hiel), 0.0, 0.0) if u < 0.8 else -math.radians(hiel)   # teen op ruim voor het landen (servo's lopen achter)
             f[swing] = hiel_site(p, th)
-            frame(f, c, (1, 0) if stand == 'left' else (0, 1), H0 + strek, {swing: Ry_(th)})   # standbeen gestrekt
+            # 2026-11-26 (Jairo: gewicht bij het landen): standvoet duwt kort af over de teen rond het landen, zodat het
+            # gewicht geleidelijk naar de landende voet gaat
+            sd = math.radians(stand_duw) * mj((u - 0.6) / 0.4)
+            f[stand] = teen_site(feet[stand], sd)
+            frame(f, c, (1, 0) if stand == 'left' else (0, 1), H0 + strek, {swing: Ry_(th), stand: Ry_(sd)})   # standbeen gestrekt
         feet[swing] = end
         # 2026-11-26 (Jairo: de teen van het standbeen moet afrollen): na het landen gaat het gewicht naar de voorste voet
         # en rolt de achterste (de standvoet van deze pas) af over de teen: hiel op; zo staat hij klaar voor de volgende pas
@@ -179,7 +184,7 @@ def maak(shift_s=0.5, swing_s=0.24, back_s=0.5, hold_s=1.0, half=5.0e-3, lift=0.
             u = mj((k + 1) / n)
             # hiel staat, voet rolt af (teen ontspant) in het eerste deel van 'terug'
             th = -math.radians(hiel) * (1 - mj((k + 1) / max(1, rol * n)))
-            ts = tr * u
+            ts = tr * u + math.radians(stand_duw) * (1 - mj((k + 1) / max(1, duw_uit * fps)))   # afduwen ebt weg
             f = dict(feet); f[swing] = hiel_site(end, th); f[stand] = teen_site(feet[stand], ts)
             frame(f, c0 + u * (newmid - c0), (1, 1), H0 + strek * (1 - u), {swing: Ry_(th), stand: Ry_(ts)})
         foot_th[stand] = tr
