@@ -1442,6 +1442,25 @@ def trunk_calm(env) -> torch.Tensor:
     return torch.square(w[:, 0]) + torch.square(w[:, 1])
 
 
+class soft_landing:
+    """2026-11-26 (500: klap bij het neerzetten, romp zakt 107 mm/s): neerwaartse snelheid^2 (m/s) van een voet
+    die vlak boven de grond is (< 4 mm) - straf op hard neerzetten."""
+
+    def __init__(self, cfg, env):
+        asset = env.scene["robot"]
+        self.site_ids = asset.find_sites(("left_foot", "right_foot"), preserve_order=True)[0]
+        self.prev = None
+
+    def __call__(self, env) -> torch.Tensor:
+        z = env.scene["robot"].data.site_pos_w[:, self.site_ids, 2]          # (N, 2)
+        if self.prev is None or self.prev.shape != z.shape:
+            self.prev = z.clone()
+        vz = (z - self.prev) / env.step_dt
+        self.prev = z.clone()
+        near = (z < 0.004).float()
+        return torch.sum(torch.square(torch.clamp(vz, max=0.0)) * near, -1)
+
+
 def both_feet_air(env, sensor_name: str = "feet_ground_contact") -> torch.Tensor:
     """2026-11-26: geen hupjes - 1 als beide voeten tegelijk los zijn."""
     found = env.scene.sensors[sensor_name].data.found.reshape(env.num_envs, -1)[:, :2] > 0
@@ -1584,7 +1603,9 @@ def make_duckling_velocity_env_cfg(play: bool = False, rough: bool = False) -> M
         R["residual_l2"] = RewardTermCfg(func=residual_l2, weight=-1.0 if ROOSTER == "dyn" else -4.0)
     if ROOSTER == "dyn":
         R["trunk_calm"] = RewardTermCfg(func=trunk_calm, weight=-0.5)        # 3 rad/s -> -4.5 per stap
-        R["both_feet_air"] = RewardTermCfg(func=both_feet_air, weight=-3.0)   # dyn: balans vraagt bijsturen   # 2026-11-26: volg het pasje
+        R["both_feet_air"] = RewardTermCfg(func=both_feet_air, weight=-3.0)
+        R["soft_landing"] = RewardTermCfg(func=soft_landing, weight=-20.0)   # 0.27 m/s -> -1.5 per stap
+        R["contact_schedule"].weight = 8.0   # 500 zwaaide in 0.12 s i.p.v. 0.4 s en tilde dubbel: timing van het rooster telt zwaarder   # dyn: balans vraagt bijsturen   # 2026-11-26: volg het pasje
     # task
     R["track_linear_velocity"].weight = 2.0      # 2026-10-15: 4 -> 2, the follow rewards lead (13: 2 -> 4)
     R["track_linear_velocity"].func = track_lin_two_scale      # 2026-10-14: fine 0.03 + coarse 0.10 m/s

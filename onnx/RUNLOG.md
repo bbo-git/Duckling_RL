@@ -114,3 +114,4 @@ Regel: één verandering per run waar het kan.
 - 200 (v6->v7): Jairo: "hij moet echt een voorwaartse beweging maken met gewicht en teen-afzet". v8: teen-afzet 10 gr en zwaartepunt 4 mm voor de standvoet ook bij kleine pasjes (was 0 onder 20 %); com_forward-doel 4 mm. Enkel max 3 rad/s.
 - com_forward 2 -> 5 in dyn.
 - 300 (v8): zwaartepunt +2 mm voor (doel 4), 0 hupjes, voet 3.5x los per pasje (schuifel), 60 mm/10 s, romp-roll +-7.5 gr. Jairo: te veel zijwaartse heupzwaai. v9: waggel 30 % (romp-roll in het rooster 3.7 -> 1.3 gr).
+- 500 (v9): zwaartepunt +5..6 mm voor (doel gehaald), 95-113 mm/10 s, stil na het pasje. Maar zwaai 0.12 s (rooster 0.4 s), voet 11 mm op, klap bij neerzetten (romp -107 mm/s) en dezelfde voet nog eens op ('double bounce'). -> soft_landing -20 (neerwaartse voetsnelheid^2 onder 4 mm), contact_schedule 4 -> 8. Hervat vanaf 500.
