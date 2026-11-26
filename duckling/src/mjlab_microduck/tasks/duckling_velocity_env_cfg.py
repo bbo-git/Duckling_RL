@@ -73,7 +73,7 @@ elif ROOSTER == "dyn":
     # 2026-11-26 middag (Jairo): STAP-ROOSTER uit tools/stap_gen.py + stap_grid.py: elke pas = leunen (heup-roll, zolen
     # plat) -> vloeiend afzetten en zwaaien (0.24 s) -> op de hak landen -> terug naar het midden -> 1 s pauze. Om en om.
     # Alle vooruit-opdrachten = deze pas (4.5 mm/s = 5 % van v100). Oud: DUCK_GRID=gait_grid_pasje_v11.npz
-    _g = os.environ.get("DUCK_GRID", "gait_grid_stap_v2.npz")   # 2026-11-26 avond: stap v2 = 4 mm opzij (heup-roll max 8 gr, romp ~11 gr; v1: 20 gr = de grens, viel echt)   # v11: 0.3 s per pas (v10: 0.45 = schuifelen)   # v8: + teen-afzet 10 gr, zwaartepunt 4 mm voor; v9: waggel 30 %
+    _g = os.environ.get("DUCK_GRID", "gait_grid_stap_v1.npz")   # 2026-11-26 avond: v2 (4 mm opzij) stuiterde en viel bij 1.0x -> terug naar v1   # v11: 0.3 s per pas (v10: 0.45 = schuifelen)   # v8: + teen-afzet 10 gr, zwaartepunt 4 mm voor; v9: waggel 30 %
     STYLES = [("normaal", _g), ("parmantig", _g)]
 STYLE_PROBS = (1.0, 0.0)   # 2026-11-19: eerst alleen "normaal" (one-hot blijft 2 lang: firmware ongewijzigd)
 # Taak: "lopen" (snelheidscommando's, eerst trainen) of "volgen" (persoon volgen, fine-tune daarna)
@@ -357,7 +357,7 @@ class BehaviorVelocityCommand(StyleVelocityCommand):
     if ROOSTER == "dyn":
         # v5: 20 % = pas 4.5 mm, 30 % = 6.7 mm, 45 % = 10 mm (cadans van het loopje, ~0.25 s per pas)
         PASJES_STAGES = [(0, 4, 0.20, 0.30), (400, 4, 0.20, 0.40), (800, 8, 0.20, 0.50)]   # v6: 6.7-13 mm per pas
-        if "stap" in os.environ.get("DUCK_GRID", "gait_grid_stap_v2.npz"):
+        if "stap" in os.environ.get("DUCK_GRID", "gait_grid_stap_v1.npz"):
             # stap-rooster: snelheid ligt vast in de pas (5 %); eerst 1-2 passen per keer, dan meer
             PASJES_STAGES = [(0, 2, 0.05, 0.05), (400, 4, 0.05, 0.05), (800, 8, 0.05, 0.05)]
 
@@ -386,7 +386,7 @@ class BehaviorVelocityCommand(StyleVelocityCommand):
         go = (st == 0) & (self._pj_t <= 0)
         if go.any():
             k = int(go.sum())
-            self._pj_left[go] = torch.randint(1 if ("stap" in os.environ.get("DUCK_GRID", "gait_grid_stap_v2.npz") or not PJ) else 2, n_max + 1, (k,), device=dev)
+            self._pj_left[go] = torch.randint(1 if ("stap" in os.environ.get("DUCK_GRID", "gait_grid_stap_v1.npz") or not PJ) else 2, n_max + 1, (k,), device=dev)
             self._pj_f[go] = torch.empty(k, device=dev).uniform_(f_min, max(f_max, f_min))
             st = torch.where(go, torch.ones_like(st), st)
         # wachten -> lopen op de grens van een halve cyclus (pas begint met een voet)

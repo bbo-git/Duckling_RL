@@ -159,3 +159,4 @@ Regel: één verandering per run waar het kan.
 - Echte eend (netwerk 200, stap v1) viel bij de eerste pas naar rechts: heup-roll stond al op de grens van 20 gr (het ontwerp gebruikte de hele uitslag), geen bijsturen meer mogelijk.
 - v2: zwaartepunt 4 mm opzij (was 10,5) -> heup-roll max 8 gr, romp-roll ~11 gr (was ~22, Jairo: "de helft of minder hellen"). Open lus staat bij 1.0x en 1.6x.
 - Training: vertraging netwerk->servo 0/20/40/60 ms (25/35/25/15 %), was 0/20/40.
+- CORRECTIE (zelfde avond): v2 stuiterde in de player (Jairo). Mijn test had een oude kopie van stap_gen gebruikt. Met de juiste: v2 valt bij 1.0x en heeft 16 voet-los i.p.v. 8. Alleen v1 (10,5 mm, heup-roll 20) is schoon. Kop-roll helpt niet voor het zwaartepunt (getest), heup-roll max 20 (Jairo). Terug naar v1 als standaard; vertraging tot 60 ms blijft.
