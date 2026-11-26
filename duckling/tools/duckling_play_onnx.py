@@ -73,7 +73,7 @@ HOME_POS_DEG = {"hip_pitch": 0.0, "knee": 0.0, "ankle": 0.0}   # V2; V1 was -11.
 STYLES = [("normaal", "grids/gait_grid_normaal_v3.npz"), ("parmantig", "grids/gait_grid_parmantig_v5.npz")]
 # 2026-11-26: rustige pasjes (training DUCK_ROOSTER=pasje, standaard). --oud = het oude loopje-rooster
 if "--oud" not in sys.argv:
-    STYLES = [("normaal", "grids/gait_grid_pasje_v3.npz"), ("parmantig", "grids/gait_grid_pasje_v3.npz")]
+    STYLES = [("normaal", "grids/gait_grid_pasje_v4.npz"), ("parmantig", "grids/gait_grid_pasje_v4.npz")]
 TORSO = "trunk_base"
 LIMITS = dict(vx=(0.0, 0.12), vy=(0.0, 0.0), wz=(-0.6, 0.6))   # = training ranges (lopen: vooruit + draaien)
 CYCLE_S = 1.0                        # walk-cycle length (s), walk_cycle.npz "cycle_s"

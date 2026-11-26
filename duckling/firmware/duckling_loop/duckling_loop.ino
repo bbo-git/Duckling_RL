@@ -70,7 +70,7 @@ static int oefen_left = 0, oefen_n = 1; static float oefen_f = 0.25f, oefen_rust
 enum Post { STAAT, GAAT_ZITTEN, ZIT, STAAT_OP };
 static const char* POST_NAAM[] = {"STAAT", "GAAT ZITTEN", "ZIT", "STAAT OP"};
 static Post post = STAAT; static float post_t = 0, sit_amt = 0, rest_b = 0;
-static bool want_sit = false, rust_aan = true;
+static bool want_sit = false, rust_aan = false;   // 2026-11-26 (Jairo): netwerk ook aan in rust (balanceren); "rust aan" = oude rust-modus
 #define SIT_S 0.5f
 #define SIT_UP_S 0.833f
 #define FADE_IN_S 0.25f
