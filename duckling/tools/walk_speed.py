@@ -21,6 +21,8 @@ look_pitch), e.g. for following a face with the camera.
 """
 import argparse
 import json
+import os
+import sys
 import math
 import multiprocessing as mp
 import time
@@ -34,6 +36,13 @@ import gait_gen as G
 STYLE = "favorites/jairo_walk_v5.npz"
 # 2026-10-29 (v2, servo's): je loopje (100%) zit al op ~90% van de servosnelheid -> geen 115/130%
 SPEEDS = np.round(np.concatenate([[-0.5, -0.35, -0.2, 0.0], np.linspace(0.2, 1.0, 9)]), 3)
+# 2026-11-26: rustige pasjes bij lage snelheid (--pasje). Onder PASJE_TOT is elk pasje quasi-statisch:
+# gewicht over de standvoet, voet op, neerzetten, gewicht terug naar het midden; trage cadans.
+PASJE = dict(aan=("--pasje" in sys.argv or os.environ.get("DUCK_PASJE") == "1"), tot=0.30, vlot=0.50, cycle=(0.06, 2.0, 0.30, 1.0), ds=0.30, lift=0.006, width=0.0493, waddle=0.0, frac=0.8)   # width = HOME-voetbreedte
+SPEEDS_PASJE = np.array([-0.5, -0.35, -0.2, 0.0, 0.06, 0.09, 0.12, 0.16, 0.2, 0.3, 0.5, 0.75, 1.0])
+WALK_S0_PASJE = 0.05   # onder deze snelheid mengt het rooster naar stilstaan (normaal 0.15)
+if PASJE["aan"]:
+    SPEEDS = SPEEDS_PASJE
 # negative = walking backwards (2026-10-13): your walk at |speed|, relaxed, steps reversed
 TURNS = np.array([-90.0, -45.0, 0.0, 45.0, 90.0])          # deg/s, + = left
 SIDES = np.array([-0.010, 0.0, 0.010])                     # m per cycle, + = left
@@ -138,6 +147,27 @@ def rule_params(base: G.GaitParams, s: float) -> G.GaitParams:
         p.double_support *= 1.0 - 0.5 * rr
         p.dip_m *= 1.0 - 0.5 * rr
         p.bob_m *= 1.0 - 0.5 * rr
+    if PASJE["aan"] and sv > 0:
+        k = float(G._smooth((PASJE["vlot"] - sv) / (PASJE["vlot"] - PASJE["tot"])))   # 1 = rustig pasje
+        if k > 0:
+            L = lambda a, b: a + (b - a) * k
+            s0, c0, s1, c1 = PASJE["cycle"]      # cadans: 2 s per cyclus (1 s per pasje) bij 6 %, 0.9 s bij 30 %
+            cpj = float(np.interp(sv, [s0, s1], [c0, c1]))
+            p.cycle_s = L(p.cycle_s, cpj)
+            p.stride_m = sv * v0 * p.cycle_s      # echte snelheid blijft = opdracht
+            p.double_support = L(p.double_support, float(np.interp(sv, [s0, s1], [PASJE["ds"], 0.15])))
+            p.quasi = k
+            p.quasi_frac = PASJE["frac"]
+            p.lift_m = L(p.lift_m, max(p.lift_m, PASJE["lift"]))
+            p.width_m = L(p.width_m, PASJE["width"])
+            p.waddle = L(p.waddle, PASJE["waddle"])
+            p.height_m = L(p.height_m, HOME_H)    # zelfde hoogte als stilstaan: geen sprong bij de start
+            p.pitch_deg = L(p.pitch_deg, 0.0)
+            p.dip_m *= 1 - k; p.bob_m *= 1 - 0.7 * k
+            p.push_deg *= 1 - k                   # geen afzet: rustig neerzetten en overnemen
+            p.com_ahead_m *= 1 - k
+            for kk in ("nod_deg", "head_sway_deg", "head_follow_deg", "head_look_deg"):
+                setattr(p, kk, getattr(p, kk) * (1 - 0.7 * k))
     return p                          # soles take the few degrees of sole tilt
 
 
@@ -299,6 +329,7 @@ class GaitGrid:
         d["stand_joint_pos"] = kin.home.copy(); d["stand_root_height"] = np.array(HOME_H)
         d["stand_root_local"] = np.array([g0["root_local"][:, 0].mean(), 0.0, HOME_H])
         d["stand_root_quat_local"] = np.array([1.0, 0, 0, 0]); d["stand_contact"] = np.ones(2)
+        d["walk_s0"] = np.array(WALK_S0_PASJE if PASJE["aan"] else 0.15)   # 2026-11-26
         return GaitGrid(d), out
 
 
@@ -392,6 +423,7 @@ def main():
     ap.add_argument("--style", default=STYLE)
     ap.add_argument("--anchor", nargs="*", default=[], help="pct=bestand.npz, bv. 40=favorites/langzaam.npz")
     ap.add_argument("--view", action="store_true")
+    ap.add_argument("--pasje", action="store_true", help="rustige quasi-statische pasjes tot 30 %% (2026-11-26)")
     ap.add_argument("--check", action="store_true")
     ap.add_argument("--print", type=float, default=None, metavar="PCT")
     ap.add_argument("--grid", default=None, help="schrijf het gangenrooster (training + afspelen)")

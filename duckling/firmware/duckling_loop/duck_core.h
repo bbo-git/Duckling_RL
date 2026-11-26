@@ -11,6 +11,9 @@
 #include "policy_weights.h"
 #include "duck_data.h"
 #include "calib.h"
+#ifndef GRID_WALK_S0
+#define GRID_WALK_S0 0.15f   // oud rooster (voor 26 nov)
+#endif
 
 #define NJ 14
 #define DT_CTRL 0.02f            // 50 Hz, = training
@@ -68,7 +71,7 @@ static inline float grid_cycle(float vx, float wz) {
   #undef C
 }
 static inline float grid_walk(float vx, float vy, float wz) {   // 0 = staan, 1 = lopen (klok vervaagt)
-  float s = fabsf(vx / V100) / 0.15f, t = fabsf(wz * 57.29578f) / 30.0f, y = fabsf(vy) * 0.45f / 0.006f;
+  float s = fabsf(vx / V100) / GRID_WALK_S0, t = fabsf(wz * 57.29578f) / 30.0f, y = fabsf(vy) * 0.45f / 0.006f;
   float m = s > t ? s : t; m = m > y ? m : y;
   return clampf(m, 0.0f, 1.0f);
 }
@@ -93,7 +96,7 @@ static inline void grid_base(float vx, float vy, float wz, float phase, const fl
     for (int k = 0; k < NJ; k++) q[k] += w_[c] * ((1 - w) * r0[k] + w * r1[k]);
   }
   float walk = grid_walk(vx, vy, wz);
-  bool moving = sqrtf(vx * vx + vy * vy) > 0.02f || fabsf(wz) > 0.1f;
+  bool moving = sqrtf(vx * vx + vy * vy) > 0.004f || fabsf(wz) > 0.1f;
   // kijkopdracht (nek, kop-pitch, kop-yaw, kop-roll) -> gewrichtsvolgorde
   float hc[NJ] = {0};
   if (moving && head) { hc[NECK] = head[0]; hc[HPITCH] = head[1]; hc[HYAW] = head[2]; hc[HROLL] = head[3]; }
@@ -123,7 +126,7 @@ struct Duck {
     for (int j = 0; j < NJ; j++) o[k++] = (est[j] - est_prev[j]) / DT_CTRL;
     for (int j = 0; j < NJ; j++) o[k++] = last_action[j];
     for (int i = 0; i < 3; i++) o[k++] = twist[i];
-    bool moving = sqrtf(twist[0] * twist[0] + twist[1] * twist[1]) > 0.02f || fabsf(twist[2]) > 0.1f;
+    bool moving = sqrtf(twist[0] * twist[0] + twist[1] * twist[1]) > 0.004f || fabsf(twist[2]) > 0.1f;
     for (int i = 0; i < 4; i++) o[k++] = moving ? head[i] : 0.0f;               // = training: geen kijkopdracht bij stilstaan
     for (int i = 0; i < 6; i++) o[k++] = 0.0f;
     float w = grid_walk(twist[0], twist[1], twist[2]);

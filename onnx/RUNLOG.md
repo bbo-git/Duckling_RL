@@ -44,3 +44,20 @@ Regel: één verandering per run waar het kan.
 - Firmware: `passen <n> [f]` voor losse pasjes op de eend.
 - Pasjes-schema (vervangt willekeurige opdrachten in fase pasjes): staan 1-2.5 s -> wachten op halve gangcyclus ->
   precies n passen op f -> staan. Curriculum: it 0: 1 pas, <=25 %; 300: 1-2, <=30 %; 600: 1-4, <=40 %; 900: 1-8, <=50 %.
+- Keuring 300: staan 0 mm, na stop 0 mm/1 gr, loop 0.3 57 %, 0.7x 39 %. Op de eend: viel niet, maar "meer geschuifel".
+- Keuring 600: staan 0 mm, na stop 0 mm/0 gr, loop 0.3 59 % (net FOUT), 1.6x 52 %, 0.7x 49 %, onrust 6.6 gr/stap.
+- Log 300 op de eend (`oefen 3`): elk pasje 0.25 s, gyro-piek 2.5-2.8 rad/s = de schok; geen gewichtsverplaatsing voor de stap.
+
+## 2026-11-26 ~08-30 — RUSTIGE PASJES (hervat vanaf 600, nieuw rooster)
+- Jairo: "gewicht op links, pas maken, gewicht weer verdelen, op een rustige manier".
+- Nieuw rooster grids/gait_grid_pasje_v1.npz (walk_speed.py --pasje --style favorites/normaal_v3.json):
+  tot 30 % quasi-statisch: romp eerst over de standvoet (80 %), dan voet op (6 mm), neerzetten, gewicht terug naar
+  het midden. Fase 0 / 0.5 = gewicht verdeeld (midden dubbele steun). Cadans 2 s/cyclus (1 s per pasje) bij 6 %,
+  1 s bij 30 %; dubbele steun 30 -> 15 %; hoogte en voetbreedte = HOME (geen sprong bij de start); geen waggel,
+  geen afzet, kop rustiger. Snelheden 6/9/12/16/20/30/50/75/100 %; onder 5 % mengt naar stilstaan (was 15 %).
+  Pasje 6 % = 5 mm, 9 % = 8 mm, 12 % = 10 mm, 20 % = 13 mm. Vanaf 50 % het oude loopje.
+- Open-loop in de simulatie (uitvoer 0): pasje 6-12 % staat, gyro-piek 1.1-1.8 rad/s (oud rooster 25 %: 2.2-3.8).
+- "Lopen"-drempel 0.02 -> 0.004 m/s overal (training _moving, firmware rust/kop, player): 0.02 was 22 % van v100,
+  dus pasjes op 20 % telden als STILSTAAN (stand_still-beloning, geen contactschema, rust-modus op de eend).
+- Pasjes-curriculum: it 600-900: 1 pas 6-9 %; 900: 1-2, <=12 %; 1200: 1-4, <=16 %; 1500: 1-8, <=20 %.
+- Oud rooster terug: DUCK_ROOSTER=oud (training), --oud (player).

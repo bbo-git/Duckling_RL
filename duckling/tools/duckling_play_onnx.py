@@ -70,6 +70,9 @@ SPAWN_Z = 0.0602                     # V2 (V1: 0.059)
 HOME_POS_DEG = {"hip_pitch": 0.0, "knee": 0.0, "ankle": 0.0}   # V2; V1 was -11.8 / -8.6 / -20.3 (--v1-home)
 # stijlen in dezelfde volgorde als STYLES in duckling_velocity_env_cfg.py
 STYLES = [("normaal", "grids/gait_grid_normaal_v3.npz"), ("parmantig", "grids/gait_grid_parmantig_v5.npz")]
+# 2026-11-26: rustige pasjes (training DUCK_ROOSTER=pasje, standaard). --oud = het oude loopje-rooster
+if "--oud" not in sys.argv:
+    STYLES = [("normaal", "grids/gait_grid_pasje_v1.npz"), ("parmantig", "grids/gait_grid_pasje_v1.npz")]
 TORSO = "trunk_base"
 LIMITS = dict(vx=(0.0, 0.12), vy=(0.0, 0.0), wz=(-0.6, 0.6))   # = training ranges (lopen: vooruit + draaien)
 CYCLE_S = 1.0                        # walk-cycle length (s), walk_cycle.npz "cycle_s"
@@ -142,6 +145,7 @@ class GridClock:
         self.length = np.asarray(d["length"])                      # (nS, nW, nY)
         self.jnames = [str(n) for n in d["joint_names"]]
         self.stand = np.asarray(d["stand_joint_pos"])
+        self.walk_s0 = float(d["walk_s0"]) if "walk_s0" in d else 0.15   # 2026-11-26: pasje-rooster 0.05
 
     def base(self, twist, phase, names, home, head_cmd):
         """Residu-basis (absolute hoeken in volgorde 'names'): benen = loopje bij deze opdracht en fase
@@ -175,7 +179,7 @@ class GridClock:
     def walk(self, twist):
         """0 = standing, 1 = walking (as in training): the gait clock fades out with it."""
         s = twist[0] / self.v100
-        return float(np.clip(max(abs(s) / 0.15, abs(np.degrees(twist[2])) / 30.0,
+        return float(np.clip(max(abs(s) / self.walk_s0, abs(np.degrees(twist[2])) / 30.0,
                                  abs(twist[1]) * 0.45 / 0.006), 0.0, 1.0))
 
     def cycle(self, twist):
@@ -294,7 +298,7 @@ class Duckling:
         else:   # 2026-10-31: geschatte stand uit de eigen servodoelen (geen encoders), = training/firmware
             jpos = self.est - self.home
             jvel = (self.est - self.est_prev) / (TIMESTEP * DECIMATION)
-        if self.grid is not None and not (np.hypot(twist[0], twist[1]) > 0.02 or abs(twist[2]) > 0.1):
+        if self.grid is not None and not (np.hypot(twist[0], twist[1]) > 0.004 or abs(twist[2]) > 0.1):
             head = np.zeros(4)              # as in training: no look commands while standing still
         parts = [ang_vel_b, grav_b, jpos, jvel, self.last_action, twist, head, np.zeros(6)]
         if self.gait_clock:
@@ -313,7 +317,7 @@ class Duckling:
         self.phase = (self.phase + TIMESTEP * DECIMATION / cyc) % 1.0
         self.last_action = action.copy()
         if getattr(self, "residual", False):   # 2026-11-26: doel = jouw loopje + klein bijsturen (= training)
-            moving = twist is not None and (np.hypot(twist[0], twist[1]) > 0.02 or abs(twist[2]) > 0.1)
+            moving = twist is not None and (np.hypot(twist[0], twist[1]) > 0.004 or abs(twist[2]) > 0.1)
             hc = getattr(self, "head_cmd", np.zeros(4)) if moving else np.zeros(4)
             base = g.base(twist if twist is not None else np.zeros(3), self.phase, self.names, self.home, hc)
             res = np.array([RES_SCALE_HEAD if n in ("neck_pitch", "head_pitch", "head_roll", "head_yaw")
@@ -531,7 +535,7 @@ def run_viewer(robot, pol, speed=1.0, vx=0.0, wz=0.0):
                 # rest mode: with a zero command the policy fades out and the robot just
                 # holds HOME (statically stable: centre of mass 17 mm inside the feet).
                 # It fades back in as soon as a command comes. --geen-rust turns it off.
-                standing = not (np.hypot(twist[0], twist[1]) > 0.02 or abs(twist[2]) > 0.1)
+                standing = not (np.hypot(twist[0], twist[1]) > 0.004 or abs(twist[2]) > 0.1)
                 rest["b"] = float(np.clip(rest["b"] + (-dt if standing else dt) / REST_FADE_S, 0.0, 1.0)) \
                     if REST_MODE[0] else 1.0
                 robot.step(rest["b"] * a, twist)

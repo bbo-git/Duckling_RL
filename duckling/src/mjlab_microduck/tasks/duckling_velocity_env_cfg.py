@@ -57,6 +57,11 @@ STYLES = [   # (naam, rooster in robot/duckling/grids/)
     ("normaal", "gait_grid_normaal_v3.npz"),
     ("parmantig", "gait_grid_parmantig_v5.npz"),
 ]
+# 2026-11-26 (Jairo: "gewicht op links, pas maken, gewicht weer verdelen, op een rustige manier"):
+# pasje-rooster = rustige, quasi-statische pasjes tot 30 % (1 s per pasje bij 6 %), daarboven het oude loopje.
+# Beide plekken hetzelfde rooster: de one-hot blijft 2 lang, dus hervatten en firmware blijven passen.
+if os.environ.get("DUCK_ROOSTER", "pasje") == "pasje":
+    STYLES = [("normaal", "gait_grid_pasje_v1.npz"), ("parmantig", "gait_grid_pasje_v1.npz")]
 STYLE_PROBS = (1.0, 0.0)   # 2026-11-19: eerst alleen "normaal" (one-hot blijft 2 lang: firmware ongewijzigd)
 # Taak: "lopen" (snelheidscommando's, eerst trainen) of "volgen" (persoon volgen, fine-tune daarna)
 TASK = os.environ.get("DUCK_TASK", "lopen")
@@ -322,8 +327,12 @@ class BehaviorVelocityCommand(StyleVelocityCommand):
     # 2026-11-26 (Jairo: "eerst 1 pasje echt goed, eerst klein, dan groter"). Per env een vast schema:
     # staan (1-2.5 s) -> wachten tot de gangklok op een halve cyclus staat -> precies n passen (halve cycli)
     # lopen op snelheid f -> staan. Curriculum op iteratie: n en f groeien.
-    PASJES_STAGES = [   # (vanaf iteratie, max passen, max snelheid als fractie van v100)
-        (0, 1, 0.25), (300, 2, 0.30), (600, 4, 0.40), (900, 8, 0.50)]
+    PASJES_STAGES = [   # (vanaf iteratie, max passen, min en max snelheid als fractie van v100)
+        (0, 1, 0.20, 0.25), (300, 2, 0.20, 0.30), (600, 4, 0.20, 0.40), (900, 8, 0.20, 0.50)]
+    if os.environ.get("DUCK_ROOSTER", "pasje") == "pasje":
+        # 2026-11-26: rustige pasjes, hervat vanaf 600. 6 % = pasje van ~5 mm in 1 s, 9 % ~8 mm, 12 % ~10 mm,
+        # 16 % ~13 mm, 20 % ~13 mm in 0.7 s. Eerst 300 iteraties alleen losse kleine pasjes.
+        PASJES_STAGES = [(0, 1, 0.06, 0.09), (900, 2, 0.06, 0.12), (1200, 4, 0.06, 0.16), (1500, 8, 0.06, 0.20)]
 
     def _pasjes(self):
         n_env, dev = self.num_envs, self.device
@@ -335,10 +344,10 @@ class BehaviorVelocityCommand(StyleVelocityCommand):
             self._pj_half = torch.zeros(n_env, dtype=torch.long, device=dev)
         dt = self._env.step_dt
         it = self._env.common_step_counter / 24.0
-        n_max, f_max = 1, 0.25
-        for start, n_, f_ in self.PASJES_STAGES:
+        n_max, f_min, f_max = 1, 0.20, 0.25
+        for start, n_, fl_, f_ in self.PASJES_STAGES:
             if it >= start:
-                n_max, f_max = n_, f_
+                n_max, f_min, f_max = n_, fl_, f_
         ref = _ref(self._env)
         half = torch.floor(ref.phase * 2).long()
         crossed = half != self._pj_half
@@ -350,7 +359,7 @@ class BehaviorVelocityCommand(StyleVelocityCommand):
         if go.any():
             k = int(go.sum())
             self._pj_left[go] = torch.randint(1, n_max + 1, (k,), device=dev)
-            self._pj_f[go] = torch.empty(k, device=dev).uniform_(0.2, max(f_max, 0.2))
+            self._pj_f[go] = torch.empty(k, device=dev).uniform_(f_min, max(f_max, f_min))
             st = torch.where(go, torch.ones_like(st), st)
         # wachten -> lopen op de grens van een halve cyclus (pas begint met een voet)
         st = torch.where((st == 1) & crossed, torch.full_like(st, 2), st)
@@ -555,6 +564,7 @@ class _GridReference:
         self.stand_q = f(np.asarray(d["stand_joint_pos"])[cols])
         self.stand_head = f(np.asarray(d["stand_joint_pos"])[hcols])
         self.stand_h = float(d["stand_root_height"])
+        self.walk_s0 = float(d["walk_s0"]) if "walk_s0" in d else 0.15   # 2026-11-26: pasje-rooster 0.05
         self.stand_rq = f(np.asarray(d["stand_root_quat_local"]))
         self.v100_s = f([float(g["v100"]) for g in grids])                 # per stijl
         i100 = (int(np.argmin(np.abs(np.asarray(d["speeds"]) - 1.0))) * nW
@@ -591,7 +601,7 @@ class _GridReference:
                 for c, wc in ((k, 1 - wk), (k + 1, wk)):
                     idx.append(self.style * self.G + (a * nW + b) * nY + c); wts.append(wa * wb * wc)
         self.idx, self.wts = torch.stack(idx, 1), torch.stack(wts, 1)
-        self.walk = torch.clamp(torch.maximum(torch.maximum(s.abs() / 0.15, turn.abs() / 30.0),
+        self.walk = torch.clamp(torch.maximum(torch.maximum(s.abs() / self.walk_s0, turn.abs() / 30.0),
                                               side.abs() / 0.006), 0.0, 1.0)
         cyc = (self.wts * self.cycle[self.idx]).sum(1)
         if not first:
@@ -669,7 +679,8 @@ def _ref(env):
 
 def _moving(env, command_name: str = "twist") -> torch.Tensor:
     cmd = env.command_manager.get_command(command_name)
-    return (torch.norm(cmd[:, :2], dim=-1) > 0.02) | (cmd[:, 2].abs() > 0.1)
+    # 2026-11-26: 0.02 -> 0.004 m/s (0.02 = 22 % van v100!); pasjes lopen vanaf 6 % = 0.0054 m/s
+    return (torch.norm(cmd[:, :2], dim=-1) > 0.004) | (cmd[:, 2].abs() > 0.1)
 
 
 def reset_to_reference(env, env_ids: torch.Tensor, prob: float = 0.8):
@@ -1658,6 +1669,8 @@ def make_duckling_velocity_env_cfg(play: bool = False, rough: bool = False) -> M
             # 0-20 % = 0-4.5 mm, trappelen op de plaats. 20-50 % = echte pasjes van 4.5-11 mm. Stilstaan komt uit
             # de stilsta-envs (40 %).
             cmd.ranges.lin_vel_x = (0.2, 0.5)
+            if os.environ.get("DUCK_ROOSTER", "pasje") == "pasje":
+                cmd.ranges.lin_vel_x = (0.06, 0.2)   # (de opdracht komt toch uit _pasjes)
             cmd.ranges.ang_vel_z = (0.0, 0.0)
             cmd.rel_turn_in_place_envs = 0.0
             cmd.resampling_time_range = (1.5, 4.0)

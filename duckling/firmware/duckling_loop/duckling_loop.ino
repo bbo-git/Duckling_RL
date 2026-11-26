@@ -569,7 +569,7 @@ void loop() {
     tw[0] += clampf(goal_v - tw[0], -ACC_V * DT_CTRL, ACC_V * DT_CTRL);
     tw[2] += clampf(goal_w - tw[2], -ACC_W * DT_CTRL, ACC_W * DT_CTRL);
     if (!standing) tw[0] = tw[2] = 0;
-    bool moving = fabsf(tw[0]) > 0.02f || fabsf(tw[2]) > 0.1f;
+    bool moving = fabsf(tw[0]) > 0.004f || fabsf(tw[2]) > 0.1f;
     if (!rust_aan && standing) rest_b = 1.0f;
     else rest_b = clampf(rest_b + (moving ? DT_CTRL / FADE_IN_S : -DT_CTRL / FADE_OUT_S), 0, 1);
     uint32_t a = micros();

@@ -99,6 +99,7 @@ def main():
         cols = [names.index(j) for j in JOINTS]
         gq = d["joint_pos"][:, :, yi, :T][..., cols]                    # (nS, nW, T, 14)
         f.write(f"#define GRID_T {T}\n")
+        f.write(f"#define GRID_WALK_S0 {float(d['walk_s0']) if 'walk_s0' in d else 0.15:.4f}f   // 2026-11-26: onder deze snelheid mengt naar stilstaan\n")
         f.write("static const unsigned char GRID_LEN[%d] = {%s};\n" % (L.size, ",".join(str(int(x)) for x in L.reshape(-1))))
         f.write(arr("GRID_Q", gq))
         f.write(arr("STAND_Q", np.asarray(d["stand_joint_pos"])[cols]))

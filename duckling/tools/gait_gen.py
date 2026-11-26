@@ -113,6 +113,12 @@ class GaitParams:
     lift_hip_deg: float = 0.0   # extra optillen in de zwaai met de HEUP (been naar voren), graden
     lift_enkel_deg: float = 0.0 # extra optillen in de zwaai met de ENKEL (buigen), graden
                                 # (de teen compenseert, zodat de zoolstand gelijk blijft)
+    # 2026-11-26: rustig pasje (quasi-statisch). 0 = slinger-loopje (LIPM, voor vlot tempo);
+    # 1 = eerst het gewicht helemaal over de standvoet, dan pas de andere voet optillen, en na het
+    # neerzetten het gewicht weer naar het midden. Fase 0 / 0.5 ligt dan midden in de dubbele steun
+    # (gewicht verdeeld), zodat een losse halve cyclus precies een pasje is.
+    quasi: float = 0.0
+    quasi_frac: float = 0.8     # hoe ver de romp over de standvoet schuift (1 = zwaartepunt boven de voet)
     lift_toe_follow: float = 1.0  # 2026-10-29: hoeveel de teen het heup-optillen compenseert
                                 # (1 = zool blijft gelijk, <1 = tenen wijzen omhoog in de zwaai:
                                 # marcheren, en minder teensnelheid)
@@ -391,7 +397,9 @@ class DuckKinematics:
     def generate(self, p: GaitParams, com_passes=4):
         n = int(round(p.cycle_s * FPS))
         T = n / FPS
-        t = np.arange(n) / FPS
+        swing0 = max(0.5 - p.double_support, 0.15)
+        # quasi: fase 0 = midden van de dubbele steun voor het optillen van links
+        t = np.arange(n) / FPS - p.quasi * (0.5 - swing0) / 2 * T
         v = p.stride_m / T
         swing = max(0.5 - p.double_support, 0.15)            # swing fraction per foot
         w = math.sqrt(G / max(self.com_height, 0.03))
@@ -415,6 +423,15 @@ class DuckKinematics:
         sgn = np.where(ph < 0.5, -1.0, 1.0)                  # left swings first: lean right
         shape = 1 - np.cosh(w * Ts * (u - 0.5)) / math.cosh(w * Ts / 2)
         com_y_des = p.sway * sgn * half * shape
+        if p.quasi > 0:
+            # trapezium: boven de standvoet tijdens de zwaai, overgang in de dubbele steun
+            ds = 0.5 - swing                                  # dubbele steun per pasje (fase)
+            lp = ph % 0.5                                     # 0 = optillen, swing = neerzetten
+            sg = np.where(ph < 0.5, -1.0, 1.0)                # links zwaait: gewicht rechts
+            k = np.clip((lp - swing) / ds, 0.0, 1.0)          # 0..1 in de dubbele steun na het neerzetten
+            sm = k * k * (3 - 2 * k)
+            q_y = p.quasi_frac * half * sg * (1 - 2 * sm)     # van deze standvoet naar de andere
+            com_y_des = (1 - p.quasi) * com_y_des + p.quasi * q_y
         x = np.zeros(n)
         y = com_y_des.copy()
         self._dip = dip_curve(t, T, swing, p.dip_hz, p.dip_damping)   # -1 .. ~+0.3
