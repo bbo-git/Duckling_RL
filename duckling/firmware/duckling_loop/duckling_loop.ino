@@ -64,6 +64,14 @@ static uint32_t mode_t0 = 0;
 static float tw_goal[3] = {0, 0, 0}, tw[3] = {0, 0, 0};
 static uint32_t tw_stop_ms = 0;
 static int steps_left = 0; static float step_ph = 0;
+// 2026-11-26: rondkijken in rust (geen training nodig): kop kiest steeds een nieuw kijkdoel, het gewicht schuift
+// langzaam van links naar rechts (heup-roll). Alleen bij stilstaan; het netwerk houdt ondertussen de balans.
+static bool idle_aan = false; static float idle_cur[4] = {0}, idle_goal[4] = {0}, idle_t = 0, idle_ph = 0; static uint32_t idle_next = 0;
+#define IDLE_YAW 0.45f      // rad (~25 gr) links/rechts kijken
+#define IDLE_PITCH 0.15f    // rad omhoog/omlaag (nek en kop samen)
+#define IDLE_RATE 0.6f      // rad/s: rustig draaien
+#define IDLE_SHIFT 0.035f   // rad (~2 gr) heup-roll voor de gewichtsverplaatsing
+#define IDLE_SHIFT_S 6.0f   // s per keer links-rechts-links
 static bool step_wait = false; static int last_half = -1; static float step_v = 0;   // 2026-11-26: = training: start op een halve cyclus, om en om
 static int oefen_left = 0, oefen_n = 1; static float oefen_f = 0.25f, oefen_rust = 1.5f; static uint32_t oefen_t = 0;   // 2026-11-26: oefen   // 2026-11-26: passen <n>: na n passen (halve gangcycli) staan   // 2026-11-26: loop/draai met duur: daarna vanzelf opdracht 0 (staan)
 // 2026-11-18: zoals tools/duckling_gedrag.py: stilstaan = HOME vasthouden (rust), netwerk alleen bij lopen
@@ -411,6 +419,11 @@ static void command(String s) {
   else if (c == "anim") { anim_amp = r.length() ? clampf(r.toFloat(), 0, 1) : 1.0f; set_mode(ANIM); }
   else if (c == "staan" || c == "opstaan") { steps_left = 0; oefen_left = 0; tw_goal[0] = tw_goal[2] = 0; want_sit = false; if (mode != NET) set_mode(NET); }
   else if (c == "zit") { tw_goal[0] = tw_goal[2] = 0; want_sit = true; if (mode != NET) set_mode(NET); }
+  else if (c == "rondkijken") {   // rondkijken aan|uit: in rust kop rondkijken + langzame gewichtsverplaatsing
+    idle_aan = (r == "aan" || r == "");
+    if (idle_aan) idle_next = millis();
+    Serial.printf("rondkijken: %s\n", idle_aan ? "AAN (alleen bij stilstaan)" : "uit");
+  }
   else if (c == "rust") {   // rust aan (standaard, = player): stilstaan = HOME vasthouden. rust uit: netwerk ook bij stilstaan
     if (r == "aan" || r == "uit") rust_aan = (r == "aan");
     Serial.printf("rust: %s\n", rust_aan ? "AAN (stilstaan = HOME, netwerk alleen bij lopen)" : "UIT (netwerk ook bij stilstaan = balanceren)");
@@ -591,6 +604,27 @@ void loop() {
     else for (int j = 0; j < NJ; j++) act[j] = 0;
     float bl[NJ], offs[NJ];   // 2026-11-26: netwerk (gewogen) en zithouding apart: bij residu-acties is de actie
     for (int j = 0; j < NJ; j++) { bl[j] = rest_b * act[j]; offs[j] = (1 - rest_b) * sit_amt * CROUCH[j]; }   // een correctie
+    {   // rondkijken: alleen als hij stilstaat (geen opdracht, geen passen); anders rustig terug naar 0
+      bool idle = idle_aan && fabsf(tw[0]) < 0.004f && fabsf(tw[2]) < 0.1f && steps_left == 0 && post == STAAT;
+      if (idle && (int32_t)(millis() - idle_next) >= 0) {
+        idle_goal[0] = IDLE_YAW * (2.0f * random(1000) / 1000.0f - 1.0f);                 // kop-yaw
+        idle_goal[1] = IDLE_PITCH * (2.0f * random(1000) / 1000.0f - 1.0f);               // kop-pitch
+        idle_goal[2] = 0.08f * (2.0f * random(1000) / 1000.0f - 1.0f);                    // kop-roll (scheef, nieuwsgierig)
+        if (random(4) == 0) idle_goal[0] = idle_goal[1] = idle_goal[2] = 0;               // soms weer recht vooruit
+        idle_next = millis() + 2000 + random(3000);
+      }
+      for (int i = 0; i < 3; i++) {
+        float g = idle ? idle_goal[i] : 0.0f;
+        idle_cur[i] += clampf(g - idle_cur[i], -IDLE_RATE * DT_CTRL, IDLE_RATE * DT_CTRL);
+      }
+      idle_ph = idle ? idle_ph + DT_CTRL / IDLE_SHIFT_S : idle_ph;
+      idle_t += clampf((idle ? 1.0f : 0.0f) - idle_t, -DT_CTRL / 1.5f, DT_CTRL / 1.5f);   // schuiven in/uit in 1.5 s
+      float sh = idle_t * IDLE_SHIFT * sinf(6.2831853f * idle_ph);
+      offs[HYAW] += idle_cur[0];
+      offs[HPITCH] += 0.6f * idle_cur[1]; offs[NECK] += 0.4f * idle_cur[1];
+      offs[HROLL] += idle_cur[2];
+      offs[LHR] += sh; offs[RHR] -= sh;    // beide benen dezelfde kant op = romp schuift opzij
+    }
     duck.apply(bl, tw, head_cmd, offs);
     t_infer_us = micros() - a;
     memcpy(q_out, duck.filt, sizeof(q_out));
