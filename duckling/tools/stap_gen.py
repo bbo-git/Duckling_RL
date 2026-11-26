@@ -100,10 +100,15 @@ def teen_site(p_flat, th):
     toe = p_flat - v
     return toe + Ry_(th) @ v
 
+def herm(t, t0, t1, p0, p1, m0, m1):
+    """kubische Hermite op [t0, t1] met hellingen m0, m1 (per eenheid t)."""
+    h = t1 - t0; x = (t - t0) / h
+    return ((2*x**3 - 3*x**2 + 1) * p0 + (x**3 - 2*x**2 + x) * h * m0 + (-2*x**3 + 3*x**2) * p1 + (x**3 - x**2) * h * m1)
+
 def mj(u):  # min-jerk 0..1
     u = np.clip(u, 0, 1); return u**3 * (10 - 15*u + 6*u*u)
 
-def maak(shift_s=0.5, swing_s=0.24, back_s=0.5, hold_s=1.0, half=5.0e-3, lift=0.016, com_y=0.0105, com_x_ahead=0.001, fall_x=0.3, fall_y=0.6, land_pow=2.0, rise=0.3, strek=0.003, teen=15.0, hiel=6.0, rol=0.2, afzet=0.35, afzet_deg=15.0,
+def maak(shift_s=0.5, swing_s=0.24, back_s=0.5, hold_s=1.0, half=5.0e-3, lift=0.020, com_y=0.0105, com_x_ahead=0.001, fall_x=0.3, fall_y=0.6, land_pow=2.0, rise=0.3, strek=0.003, teen=25.0, hiel=6.0, rol=0.2, afzet=0.35, afzet_deg=15.0,
          head_roll=True, fps=50):
     """half = halve paslengte: in rust staan de voeten +-half verspringend; elke zwaai verplaatst de voet 4*half."""
     y0 = home_feet['left'][1]; xs = home_feet['left'][0]; z0 = home_feet['left'][2]
@@ -123,33 +128,41 @@ def maak(shift_s=0.5, swing_s=0.24, back_s=0.5, hold_s=1.0, half=5.0e-3, lift=0.
         n = int(shift_s * fps)
         start = feet[swing].copy(); end = start.copy(); end[0] += 4 * half
         push = 0.0
+        T_all = shift_s + swing_s
+        x_end = tgt[0] + 2 * half * fall_x                      # zwaartepunt-x aan het eind van de zwaai
+        def cx(t):   # 2026-11-26 (Jairo: geen vertraging): x loopt in EEN beweging door van verschuiven tot landen
+            return mid[0] + mj(t / T_all) * (x_end - mid[0])
+        Tp = max(afzet * shift_s, 0.02); P = math.radians(afzet_deg)
         for k in range(n):
-            ul = (k + 1) / n; u = mj(ul)
-            # 2026-11-26 (Jairo: vloeiend afzetten en zwaaien): aan het eind van het verschuiven komt de hiel van de
-            # zwaaivoet al op (rollen over de teen), zodat de zwaai zonder stilstand doorloopt
-            push = math.radians(afzet_deg) * mj((ul - (1 - afzet)) / afzet) if afzet > 0 else 0.0
+            ul = (k + 1) / n
+            u = (1 - math.cos(math.pi * ul)) / 2   # cosinus: geen stilstand bij het omkeerpunt (min-jerk remde af)
+            # 2026-11-26 (Jairo: geen vertraging): afzetten + zwaaien = EEN voetbaan zonder stilstand. Afzetten: hiel op,
+            # draaien om de voorrand van de zool, versnellend (kwadratisch) zodat de zwaai met snelheid begint.
+            t_in = ul * shift_s - (shift_s - Tp)
+            push = P * (t_in / Tp) ** 2 if t_in > 0 else 0.0
             f = dict(feet); f[swing] = teen_site(start, push)
-            frame(f, mid + u * (tgt - mid), (1, 1), H0 + strek * u, {swing: Ry_(push)})
-        # zwaai: begint waar het afzetten eindigt (zelfde voetstand en -kanteling)
-        ps = teen_site(start, push)
+            frame(f, np.array([cx(ul * shift_s), mid[1] + u * (tgt[1] - mid[1])]), (1, 1), H0 + strek * u, {swing: Ry_(push)})
+        # zwaai: begint met de stand EN de snelheid van het afzetten (Hermite-krommen)
         v_h = np.array([HEEL_DX, 0.0, kin.site_above_floor['left']])
-        p0 = ps + v_h - Ry_(push) @ v_h          # hielpunt-baan zo dat hiel_site(p0, push) = ps
+        def heel_ref(th):        # hielpunt-referentie (zoals hiel_site verwacht) tijdens het afzetten
+            return teen_site(start, th) + v_h - Ry_(th) @ v_h
+        p0 = heel_ref(P)
+        dth = 2 * P / Tp                                           # rad/s aan het eind van het afzetten
+        v0 = (heel_ref(P + 1e-4) - heel_ref(P - 1e-4)) / 2e-4 * dth * swing_s   # m per u
+        m0 = dth * swing_s
+        peak = max(P, math.radians(teen))
         n = int(swing_s * fps)
-        land = None
         for k in range(n):
             u = (k + 1) / n
-            p = p0 + mj(u) * (end - p0)
-            # 2026-11-26 (Jairo: snellere voetlift): snel op in de eerste 'rise' van de zwaai, dan zacht neer
-            p[2] = p0[2] + (end[2] - p0[2]) * mj(u) + lift * (mj(u / rise) if u < rise else 1 - mj((u - rise) / (1 - rise)) ** 1.0)
-            f = dict(feet); f[swing] = p
-            # zwaartepunt gaat verder naar voren (vallen in de pas), opzij blijft
-            # 2026-11-26 (dubbele bounce): het zwaartepunt valt tijdens de zwaai al terug naar de zwaaikant (zoals het
-            # in de fysica echt gaat); anders duwt de romp hem na het neerzetten terug en komt de voet nog eens los
-            c = tgt + np.array([mj(u) * 2 * half * fall_x, -sgn * com_y * fall_y * mj(u)])
-            # 2026-11-26 (Jairo: meer knie): teen omlaag in het begin van de zwaai (hiel op) -> knie buigt verder.
-            # (Jairo: hiel-landing): daarna teen OP, zodat de hiel eerst landt; de hiel volgt de voetbaan p.
-            th = (push * (1 - mj(u / 0.4)) + math.radians(teen) * math.sin(math.pi * min(u / 0.5, 1.0))
-                  - math.radians(hiel) * mj((u - 0.25) / 0.6))   # vroeg: servo's lopen ~0.06 s achter
+            p = np.array([herm(u, 0, 1, p0[0], end[0], v0[0], 0.0), end[1], 0.0])
+            zt = z0 + lift
+            p[2] = herm(u, 0, rise, p0[2], zt, v0[2], 0.0) if u < rise else herm(u, rise, 1, zt, end[2], 0.0, 0.0)
+            f = dict(feet)
+            # zwaartepunt gaat verder naar voren (vallen in de pas); opzij valt hij al terug naar de zwaaikant
+            fy = (1 - math.cos(math.pi * u)) / 2
+            c = np.array([cx(shift_s + u * swing_s), tgt[1] - sgn * com_y * fall_y * fy])
+            # voetkanteling: doorlopen vanuit het afzetten (teen omlaag, meer knie), dan teen op voor de hiel-landing
+            th = herm(u, 0, 0.35, P, peak, m0, 0.0) if u < 0.35 else herm(u, 0.35, 1, peak, -math.radians(hiel), 0.0, 0.0)
             f[swing] = hiel_site(p, th)
             frame(f, c, (1, 0) if stand == 'left' else (0, 1), H0 + strek, {swing: Ry_(th)})   # standbeen gestrekt
         feet[swing] = end
