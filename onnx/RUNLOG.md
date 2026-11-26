@@ -79,3 +79,4 @@ Regel: één verandering per run waar het kan.
 - residual_l2 -4 (benen dicht bij het rooster), 2-4 pasjes achter elkaar op 6-9 %, rust 0.5-1.5 s.
   Curriculum: 1250: <=12 %; 1500: 8 pasjes <=16 %; 1800: <=20 %.
 - Player en firmware: netwerk standaard ook aan in rust.
+- track_linear_velocity in pasjes: std 0.006/0.02 m/s (was 0.03/0.10: stilstaan bij 9 % kreeg 93 % van de beloning).

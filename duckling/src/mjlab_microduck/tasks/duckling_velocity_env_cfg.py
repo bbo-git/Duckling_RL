@@ -1699,6 +1699,10 @@ def make_duckling_velocity_env_cfg(play: bool = False, rough: bool = False) -> M
         for name in ("follow_distance", "follow_bearing", "turn_toward", "push_off", "back_off"):
             R.pop(name, None)
         R["track_linear_velocity"].weight = 4.0
+        if FASE == "pasjes" and os.environ.get("DUCK_ROOSTER", "pasje") == "pasje":
+            # 2026-11-26 (Jairo: "beloon je de stapafstand?"): pasjes vragen 5-11 mm/s. Met std 0.03 m/s kreeg
+            # stilstaan bij een 9 %-opdracht nog 93 % van deze beloning. Nu 6 mm/s fijn, 20 mm/s ruim: ~50 %.
+            R["track_linear_velocity"].params = {"std_fine": 0.006, "std_coarse": 0.02, "command_name": "twist"}
         R["track_angular_velocity"] = RewardTermCfg(
             func=track_ang_two_scale, weight=6.0,   # 2026-10-31: 4 -> 6 (2900 haalde ~40 % van de draaisnelheid)
             params={"std_fine": 0.15, "std_coarse": 0.6, "command_name": "twist"})   # 2026-10-30: 0.25 -> 0.15 (1050 draaide niet)
