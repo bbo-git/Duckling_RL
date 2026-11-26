@@ -168,3 +168,4 @@ Regel: één verandering per run waar het kan.
 - Uitgangspunt: stap v3 (3 mm opzij, zwaai 0,15 s, romp ~5 gr) zonder pauzes: hold_s 0, back_s kort; cadans zoeken in de sim (open lus, 0.7-2.0x), daarna rooster met snelheid als parameter.
 - Training: hip_roll_residual -3 en vertraging tot 60 ms houden. Laatste UF2: netwerk 150 (stap v3 + heup-roll-straf), niet gevallen.
 - Grip: dun rubber/antislip onder de zolen (geen dik foam); voet slipt in yaw bij afzetten.
+- Echt, 150 (nieuwe run met heup-roll-straf): 2x oefen zonder val; heup-roll +-7 (ontwerp 6), romp -6..+7,5, knie tot +9 (ontwerp +13). 250 van de vorige run viel na een paar oefeningen (35 gr).
