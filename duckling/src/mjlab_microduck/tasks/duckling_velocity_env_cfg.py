@@ -1707,14 +1707,14 @@ def make_duckling_velocity_env_cfg(play: bool = False, rough: bool = False) -> M
     R["stance_grip"] = RewardTermCfg(func=stance_grip, weight=1.5)   # 2026-10-13: no sliding feet
     R["stand_action_rate"] = RewardTermCfg(func=stand_action_rate, weight=-1.0)   # at rest: no wiggling
     if RESIDUAL and PJ:
-        R["residual_l2"] = RewardTermCfg(func=residual_l2, weight=-1.0 if ROOSTER == "dyn" else -4.0)
+        R["residual_l2"] = RewardTermCfg(func=residual_l2, weight=-0.5 if ROOSTER == "dyn" else -4.0)
     if ROOSTER == "dyn":
-        R["trunk_calm"] = RewardTermCfg(func=trunk_calm, weight=-0.5)        # 3 rad/s -> -4.5 per stap
+        R["trunk_calm"] = RewardTermCfg(func=trunk_calm, weight=-0.2)   # 250 deed bijna niets: -0.5 -> -0.2        # 3 rad/s -> -4.5 per stap
         R["both_feet_air"] = RewardTermCfg(func=both_feet_air, weight=-3.0)
-        R["soft_landing"] = RewardTermCfg(func=soft_landing, weight=-20.0)   # 0.27 m/s -> -1.5 per stap
+        R["soft_landing"] = RewardTermCfg(func=soft_landing, weight=-5.0)   # -20 -> -5 (250: niet optillen = geen straf)   # 0.27 m/s -> -1.5 per stap
         # 2026-11-26: optillen alleen belonen zolang de zwaai schoon is; elk tikje kost (150-250 tikten 2-4x per pasje)
-        R["swing_clearance"] = RewardTermCfg(func=swing_clean_lift, weight=6.0)
-        R["swing_taps"] = RewardTermCfg(func=swing_taps, weight=-5.0)
+        R["swing_clearance"] = RewardTermCfg(func=swing_clean_lift, weight=10.0)   # 6 -> 10
+        R["swing_taps"] = RewardTermCfg(func=swing_taps, weight=-2.0)              # -5 -> -2
         R["com_track"] = RewardTermCfg(func=com_track, weight=5.0)       # in de pas vallen; rechtop in rust
         R["contact_schedule"].weight = 8.0   # 500 zwaaide in 0.12 s i.p.v. 0.4 s en tilde dubbel: timing van het rooster telt zwaarder   # dyn: balans vraagt bijsturen   # 2026-11-26: volg het pasje
     # task
@@ -1868,7 +1868,7 @@ def make_duckling_velocity_env_cfg(play: bool = False, rough: bool = False) -> M
         cfg.commands["head_pose"] = _BehaviorHeadPoseCfg(**vars(cfg.commands["head_pose"]))
         for name in ("follow_distance", "follow_bearing", "turn_toward", "push_off", "back_off"):
             R.pop(name, None)
-        R["track_linear_velocity"].weight = 4.0
+        R["track_linear_velocity"].weight = 6.0 if ROOSTER == "dyn" else 4.0   # 250 kwam niet vooruit
         if FASE == "pasjes" and PJ:
             # 2026-11-26 (Jairo: "beloon je de stapafstand?"): pasjes vragen 5-11 mm/s. Met std 0.03 m/s kreeg
             # stilstaan bij een 9 %-opdracht nog 93 % van deze beloning. Nu 6 mm/s fijn, 20 mm/s ruim: ~50 %.

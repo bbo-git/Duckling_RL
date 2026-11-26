@@ -124,3 +124,4 @@ Regel: één verandering per run waar het kan.
 - swing_clearance -> swing_clean_lift (6): optillen telt alleen zolang de voet in deze zwaai nog niet opnieuw de grond raakte.
   swing_taps -5 per tikje. soft_landing -20, contact_schedule 8, both_feet_air -3, trunk_calm -0.5, com_forward 5 (doel 5 mm).
 - Voetbreedte max = loopje + 2 mm (Jairo: "geen zijwaartse stap").
+- 250 (sim en echt gelijk): rustig schuifelen, niet gevallen, nauwelijks vooruit, voet ~1 mm, zwaartepunt -1.3 mm. Te veel straffen -> niets doen is het veiligst. Versoepeld: soft_landing -20 -> -5, swing_taps -5 -> -2, trunk_calm -0.5 -> -0.2, residual_l2 -1 -> -0.5; beloningen swing_clean_lift 6 -> 10, track_linear_velocity 4 -> 6. Hervat vanaf 250.
