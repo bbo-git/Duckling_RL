@@ -471,7 +471,14 @@ class contact_schedule:
                  command_name: str = "twist") -> torch.Tensor:
         ref = _ref(env)
         found = env.scene.sensors[sensor_name].data.found.reshape(env.num_envs, -1)[:, :2] > 0
-        match = (found == ref.contact_now(env)).float().mean(dim=-1)
+        want = ref.contact_now(env)
+        if ROOSTER == "dyn":
+            # 2026-11-26 (double bounce): een voet die in de zwaai al (te vroeg) is neergezet, mag blijven staan -
+            # anders loont het om hem opnieuw op te tillen. 'broken' = na loskomen weer geraakt (swing_clean).
+            sc = _SWING_CLEAN.get("x")
+            if sc is not None and sc.broken is not None and sc.broken.shape == found.shape:
+                want = want | sc.broken
+        match = (found == want).float().mean(dim=-1)
         return match * _moving(env, command_name).float()
 
 
@@ -580,6 +587,11 @@ class _GridReference:
         self.h = f(stack("root_height", ()))                                # (nStyle*G, T)
         self.rq = f(stack("root_quat_local", (4,)))                         # (nStyle*G, T, 4) romp-orientatie
         self.c = f(stack("contact", (2,)))                                  # (nStyle*G, T, 2)
+        # 2026-11-26: zwaartepunt t.o.v. de standvoet(en) per stand (tools/add_com_ref.py) - "in de pas vallen"
+        self.has_com = all("com_ref" in g for g in grids)
+        if self.has_com:
+            self.com_ref = f(stack("com_ref", ()))                          # (nStyle*G, T)
+            self.stand_com = float(d["stand_com_ref"])
         self.head = f(jp[..., hcols])                                       # (nStyle*G, T, 4)
         self.length = torch.tensor(np.concatenate([np.asarray(g["length"]).reshape(-1) for g in grids]),
                                    dtype=torch.long, device=dev)
@@ -682,6 +694,11 @@ class _GridReference:
         self._update(env)
         c = self._sample(self.c, self.phase)
         return (c > 0.5) | (self.walk[:, None] < 0.5)
+
+    def com_now(self, env):
+        """2026-11-26: gewenst zwaartepunt t.o.v. de standvoet(en) (m): lopen = rooster, stilstaan = HOME."""
+        self._update(env)
+        return self.walk * self._sample(self.com_ref, self.phase) + (1 - self.walk) * self.stand_com
 
     def reset_state(self, env, env_ids, phase):
         """Reset pose from the env's style at 100%, straight (the command may not be set yet)."""
@@ -1503,6 +1520,35 @@ def swing_taps(env, command_name: str = "twist") -> torch.Tensor:
     return _swing_clean(env)[:, 1] * _moving(env, command_name).float()
 
 
+class com_track:
+    """2026-11-26 (Jairo: "het hellen zit in zijn rusthouding, niet in het begin van de pas"): zwaartepunt (hele eend)
+    t.o.v. de voet(en) op de grond, langs de romprichting, volgt het rooster: bij elke pas van boven de standvoet naar
+    ~10 mm ervoor (vallen) en opvangen; bij stilstaan de HOME-stand (rechtop). exp(-fout^2/std^2), twee schalen."""
+
+    def __init__(self, cfg, env):
+        asset = env.scene["robot"]
+        self.site_ids = asset.find_sites(("left_foot", "right_foot"), preserve_order=True)[0]
+        self.body_idx = asset.indexing.body_ids
+
+    def __call__(self, env, std: float = 0.003, sensor_name: str = "feet_ground_contact") -> torch.Tensor:
+        ref = _ref(env)
+        if not getattr(ref, "has_com", False):
+            return torch.zeros(env.num_envs, device=env.device)
+        asset = env.scene["robot"]
+        m = env.sim.model.body_mass[:, self.body_idx]
+        p = asset.data.body_com_pos_w[:, :, :2]
+        com = (m[..., None] * p).sum(1) / m.sum(1, keepdim=True)
+        found = env.scene.sensors[sensor_name].data.found.reshape(env.num_envs, -1)[:, :2] > 0
+        use = torch.where(found.any(-1, keepdim=True), found, torch.ones_like(found)).float()
+        feet = asset.data.site_pos_w[:, self.site_ids, :2]
+        support = (feet * use[..., None]).sum(1) / use.sum(-1, keepdim=True)
+        q = asset.data.root_link_quat_w
+        yaw = torch.atan2(2 * (q[:, 0] * q[:, 3] + q[:, 1] * q[:, 2]), 1 - 2 * (q[:, 2] ** 2 + q[:, 3] ** 2))
+        ahead = torch.cos(yaw) * (com[:, 0] - support[:, 0]) + torch.sin(yaw) * (com[:, 1] - support[:, 1])
+        e = torch.square(ahead - ref.com_now(env))
+        return 0.5 * torch.exp(-e / std ** 2) + 0.5 * torch.exp(-e / (3 * std) ** 2)
+
+
 class soft_landing:
     """2026-11-26 (500: klap bij het neerzetten, romp zakt 107 mm/s): neerwaartse snelheid^2 (m/s) van een voet
     die vlak boven de grond is (< 4 mm) - straf op hard neerzetten."""
@@ -1669,6 +1715,7 @@ def make_duckling_velocity_env_cfg(play: bool = False, rough: bool = False) -> M
         # 2026-11-26: optillen alleen belonen zolang de zwaai schoon is; elk tikje kost (150-250 tikten 2-4x per pasje)
         R["swing_clearance"] = RewardTermCfg(func=swing_clean_lift, weight=6.0)
         R["swing_taps"] = RewardTermCfg(func=swing_taps, weight=-5.0)
+        R["com_track"] = RewardTermCfg(func=com_track, weight=5.0)       # in de pas vallen; rechtop in rust
         R["contact_schedule"].weight = 8.0   # 500 zwaaide in 0.12 s i.p.v. 0.4 s en tilde dubbel: timing van het rooster telt zwaarder   # dyn: balans vraagt bijsturen   # 2026-11-26: volg het pasje
     # task
     R["track_linear_velocity"].weight = 2.0      # 2026-10-15: 4 -> 2, the follow rewards lead (13: 2 -> 4)
@@ -1831,7 +1878,7 @@ def make_duckling_velocity_env_cfg(play: bool = False, rough: bool = False) -> M
         R["track_angular_velocity"] = RewardTermCfg(
             func=track_ang_two_scale, weight=6.0,   # 2026-10-31: 4 -> 6 (2900 haalde ~40 % van de draaisnelheid)
             params={"std_fine": 0.15, "std_coarse": 0.6, "command_name": "twist"})   # 2026-10-30: 0.25 -> 0.15 (1050 draaide niet)
-        R["com_forward"].weight = 5.0 if ROOSTER == "dyn" else 2.0   # 2026-11-26: gewicht naar voren (Jairo, 4e keer)
+        R["com_forward"].weight = 0.0 if ROOSTER == "dyn" else 2.0   # 2026-11-26: dyn -> com_track (vallen in de pas, rechtop in rust)
         R["stand_still"] = RewardTermCfg(func=stand_still, weight=3.0)
         R["flat_feet"] = RewardTermCfg(func=flat_feet, weight=1.0)
 
