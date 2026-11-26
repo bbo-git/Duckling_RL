@@ -67,3 +67,7 @@ Regel: één verandering per run waar het kan.
   als de romp alleen opzij schuift -> v3: romp ~11 mm opzij + licht leunen naar de standvoet (waddle 0.5).
   Open-loop: 6-12 % staat, kanteling max 6.3-7.2 gr (beste tot nu), gyro 1.3-1.8; vanaf 16 % valt hij zonder netwerk.
   Training gebruikt gait_grid_pasje_v3.npz.
+- 650/750 (v3): verplaatst gewicht, maar tilt de voet niet op ("klein schuifje"). Open-loop bleek: met 11 mm opzij
+  komt de voet maar ~3 mm los, ook met 10 mm opgetild in het rooster - het zwaartepunt staat nog op de rand van de zool.
+- v4: romp ~16 mm opzij + 8 gr leunen, voet 10 mm op. Open-loop: voet 7 mm los, 11-16 mm vooruit per pasje, kanteling
+  max 11 gr (incl. het leunen). swing_clearance 3 -> 6, doel 8 mm. Hervat vanaf 750.

@@ -38,7 +38,7 @@ STYLE = "favorites/jairo_walk_v5.npz"
 SPEEDS = np.round(np.concatenate([[-0.5, -0.35, -0.2, 0.0], np.linspace(0.2, 1.0, 9)]), 3)
 # 2026-11-26: rustige pasjes bij lage snelheid (--pasje). Onder PASJE_TOT is elk pasje quasi-statisch:
 # gewicht over de standvoet, voet op, neerzetten, gewicht terug naar het midden; trage cadans.
-PASJE = dict(aan=("--pasje" in sys.argv or os.environ.get("DUCK_PASJE") == "1"), tot=0.30, vlot=0.50, cycle=(0.06, 2.0, 0.30, 1.0), ds=0.30, lift=0.006, width=0.0493, waddle=0.0, frac=0.25)   # width = HOME-voetbreedte; frac 0.25 = ~6 mm opzij (Jairo: 20 mm = skien, eerder 5)
+PASJE = dict(aan=("--pasje" in sys.argv or os.environ.get("DUCK_PASJE") == "1"), tot=0.30, vlot=0.50, cycle=(0.06, 2.0, 0.30, 1.0), ds=0.30, lift=0.006, width=0.0493, waddle=0.5, frac=0.5)   # width = HOME-voetbreedte; v3: romp ~11 mm opzij en licht leunen (v1 20 mm = skien)
 SPEEDS_PASJE = np.array([-0.5, -0.35, -0.2, 0.0, 0.06, 0.09, 0.12, 0.16, 0.2, 0.3, 0.5, 0.75, 1.0])
 WALK_S0_PASJE = 0.05   # onder deze snelheid mengt het rooster naar stilstaan (normaal 0.15)
 if PASJE["aan"]:

@@ -61,7 +61,7 @@ STYLES = [   # (naam, rooster in robot/duckling/grids/)
 # pasje-rooster = rustige, quasi-statische pasjes tot 30 % (1 s per pasje bij 6 %), daarboven het oude loopje.
 # Beide plekken hetzelfde rooster: de one-hot blijft 2 lang, dus hervatten en firmware blijven passen.
 if os.environ.get("DUCK_ROOSTER", "pasje") == "pasje":
-    STYLES = [("normaal", "gait_grid_pasje_v3.npz"), ("parmantig", "gait_grid_pasje_v3.npz")]
+    STYLES = [("normaal", "gait_grid_pasje_v4.npz"), ("parmantig", "gait_grid_pasje_v4.npz")]
 STYLE_PROBS = (1.0, 0.0)   # 2026-11-19: eerst alleen "normaal" (one-hot blijft 2 lang: firmware ongewijzigd)
 # Taak: "lopen" (snelheidscommando's, eerst trainen) of "volgen" (persoon volgen, fine-tune daarna)
 TASK = os.environ.get("DUCK_TASK", "lopen")
@@ -571,6 +571,8 @@ class _GridReference:
                 + int(np.argmin(np.abs(np.asarray(d["turns"])))) ) * nY + int(np.argmin(np.abs(np.asarray(d["sides"]))))
         self.i100_s = torch.tensor([s * G + i100 for s in range(len(grids))], dtype=torch.long, device=dev)
         self.lift_s = f([0.8 * r["lift"] for r in style_tables()])
+        if os.environ.get("DUCK_ROOSTER", "pasje") == "pasje":
+            self.lift_s = f([0.008 for _ in style_tables()])   # 2026-11-26: pasje-rooster v4 tilt 10 mm -> doel 8 mm
         self.width_s = f([r["width"] for r in style_tables()])
         self.phase = torch.zeros(env.num_envs, device=dev)
         self.dt = env.step_dt
@@ -1507,7 +1509,7 @@ def make_duckling_velocity_env_cfg(play: bool = False, rough: bool = False) -> M
     R["walk_imitation"] = RewardTermCfg(func=walk_imitation, weight=IMITATION_WEIGHT,
                                         params={"std": IMITATION_STD, "std_fine": 0.10})   # 2026-10-30: + fijn (250 waggelde: heup-roll 37 gr i.p.v. 12)
     R["contact_schedule"] = RewardTermCfg(func=contact_schedule, weight=4.0)   # timing as a guide
-    R["swing_clearance"] = RewardTermCfg(func=swing_clearance, weight=3.0,   # 2026-11-01: 1.5 -> 3   # lift the swing foot
+    R["swing_clearance"] = RewardTermCfg(func=swing_clearance, weight=6.0 if os.environ.get("DUCK_ROOSTER", "pasje") == "pasje" else 3.0,   # 2026-11-26: pasjes 750 tilde niet op -> 6   # 2026-11-01: 1.5 -> 3   # lift the swing foot
                                          params={"target": SWING_LIFT})
     R["trunk_height"] = RewardTermCfg(func=trunk_height_tracking, weight=1.5,   # 2026-10-13: 1 -> 1.5, std 6 -> 4 mm:
                                       params={"std": 0.004})                       # the springy sag is character
