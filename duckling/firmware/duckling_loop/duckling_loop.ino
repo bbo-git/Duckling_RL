@@ -67,9 +67,9 @@ static int steps_left = 0; static float step_ph = 0;
 // 2026-11-26: rondkijken in rust (geen training nodig): kop kiest steeds een nieuw kijkdoel, het gewicht schuift
 // langzaam van links naar rechts (heup-roll). Alleen bij stilstaan; het netwerk houdt ondertussen de balans.
 static bool idle_aan = false; static float idle_cur[4] = {0}, idle_goal[4] = {0}, idle_t = 0, idle_ph = 0; static uint32_t idle_next = 0;
-#define IDLE_YAW 0.45f      // rad (~25 gr) links/rechts kijken
-#define IDLE_PITCH 0.15f    // rad omhoog/omlaag (nek en kop samen)
-#define IDLE_RATE 0.6f      // rad/s: rustig draaien
+#define IDLE_YAW 0.80f      // rad (~45 gr) links/rechts kijken (Jairo: duidelijker; was 0.45)
+#define IDLE_PITCH 0.30f    // rad omhoog/omlaag (nek en kop samen; was 0.15)
+#define IDLE_RATE 1.0f      // rad/s: duidelijk maar rustig draaien (was 0.6)
 #define IDLE_SHIFT 0.035f   // rad (~2 gr) heup-roll voor de gewichtsverplaatsing
 #define IDLE_SHIFT_S 6.0f   // s per keer links-rechts-links
 #define IDLE_KAAK 25.0f     // gr snavel open als hij "iets grappigs ziet"
@@ -612,10 +612,10 @@ void loop() {
       if (idle && (int32_t)(millis() - idle_next) >= 0) {
         idle_goal[0] = IDLE_YAW * (2.0f * random(1000) / 1000.0f - 1.0f);                 // kop-yaw
         idle_goal[1] = IDLE_PITCH * (2.0f * random(1000) / 1000.0f - 1.0f);               // kop-pitch
-        idle_goal[2] = 0.08f * (2.0f * random(1000) / 1000.0f - 1.0f);                    // kop-roll (scheef, nieuwsgierig)
+        idle_goal[2] = 0.0f;                                                              // roll alleen als hij iets ziet
         if (random(4) == 0) idle_goal[0] = idle_goal[1] = idle_goal[2] = 0;               // soms weer recht vooruit
         else if (random(3) == 0) {   // iets grappigs gezien: kopje scheef, snavel 1-3x open
-          idle_goal[2] = (random(2) ? 1 : -1) * 0.12f; idle_goal[1] = 0.10f;
+          idle_goal[2] = (random(2) ? 1 : -1) * 0.20f; idle_goal[1] = 0.15f;   // kopje duidelijk scheef + snavel
           kaak_keer = 1 + random(3); kaak_dicht = millis() + 400;
         }
         idle_next = millis() + 2000 + random(3000);
