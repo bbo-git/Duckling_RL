@@ -83,7 +83,7 @@ COM_DX = d.subtree_com[1][0] - home_feet['left'][0]       # HOME: zwaartepunt t.
 def mj(u):  # min-jerk 0..1
     u = np.clip(u, 0, 1); return u**3 * (10 - 15*u + 6*u*u)
 
-def maak(shift_s=0.5, swing_s=0.24, back_s=0.5, hold_s=1.0, half=5.0e-3, lift=0.008, com_y=0.0105, com_x_ahead=0.001, fall_x=0.8, fall_y=0.6, land_pow=2.0, rise=0.3, strek=0.003,
+def maak(shift_s=0.5, swing_s=0.24, back_s=0.5, hold_s=1.0, half=5.0e-3, lift=0.012, com_y=0.0105, com_x_ahead=0.001, fall_x=0.8, fall_y=0.6, land_pow=2.0, rise=0.3, strek=0.003,
          head_roll=True, fps=50):
     """half = halve paslengte: in rust staan de voeten +-half verspringend; elke zwaai verplaatst de voet 4*half."""
     y0 = home_feet['left'][1]; xs = home_feet['left'][0]; z0 = home_feet['left'][2]
