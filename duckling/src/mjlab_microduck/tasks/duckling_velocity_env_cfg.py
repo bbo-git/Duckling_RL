@@ -1746,7 +1746,7 @@ def make_duckling_velocity_env_cfg(play: bool = False, rough: bool = False) -> M
         R["track_angular_velocity"] = RewardTermCfg(
             func=track_ang_two_scale, weight=6.0,   # 2026-10-31: 4 -> 6 (2900 haalde ~40 % van de draaisnelheid)
             params={"std_fine": 0.15, "std_coarse": 0.6, "command_name": "twist"})   # 2026-10-30: 0.25 -> 0.15 (1050 draaide niet)
-        R["com_forward"].weight = 2.0
+        R["com_forward"].weight = 5.0 if ROOSTER == "dyn" else 2.0   # 2026-11-26: gewicht naar voren (Jairo, 4e keer)
         R["stand_still"] = RewardTermCfg(func=stand_still, weight=3.0)
         R["flat_feet"] = RewardTermCfg(func=flat_feet, weight=1.0)
 

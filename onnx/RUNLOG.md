@@ -112,3 +112,4 @@ Regel: één verandering per run waar het kan.
 - Tempo is nu een parameter: walk_speed.py --pasje-dyn --pas-cyclus <s> --grid grids/<naam>.npz; training DUCK_GRID=<naam>.npz;
   player --rooster grids/<naam>.npz.
 - 200 (v6->v7): Jairo: "hij moet echt een voorwaartse beweging maken met gewicht en teen-afzet". v8: teen-afzet 10 gr en zwaartepunt 4 mm voor de standvoet ook bij kleine pasjes (was 0 onder 20 %); com_forward-doel 4 mm. Enkel max 3 rad/s.
+- com_forward 2 -> 5 in dyn.
