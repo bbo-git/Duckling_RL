@@ -108,12 +108,13 @@ def herm(t, t0, t1, p0, p1, m0, m1):
 def mj(u):  # min-jerk 0..1
     u = np.clip(u, 0, 1); return u**3 * (10 - 15*u + 6*u*u)
 
-def maak(shift_s=0.5, swing_s=0.24, back_s=0.5, hold_s=1.0, half=5.0e-3, lift=0.020, com_y=0.0105, com_x_ahead=-0.002, fall_x=0.0, fall_y=0.6, land_pow=2.0, rise=0.3, strek=0.003, teen=25.0, hiel=12.0, rol=0.2, afzet=0.35, afzet_deg=15.0, top=0.3,
+def maak(shift_s=0.5, swing_s=0.24, back_s=0.5, hold_s=1.0, half=5.0e-3, lift=0.020, com_y=0.0105, com_x_ahead=-0.002, fall_x=0.0, fall_y=0.6, land_pow=2.0, rise=0.3, strek=0.003, teen=25.0, hiel=12.0, rol=0.2, afzet=0.35, afzet_deg=15.0, top=0.3, stand_rol=0.0, voor=0.0,
          head_roll=True, fps=50):
     """half = halve paslengte: in rust staan de voeten +-half verspringend; elke zwaai verplaatst de voet 4*half."""
     y0 = home_feet['left'][1]; xs = home_feet['left'][0]; z0 = home_feet['left'][2]
     frames = []
     feet = {'left': np.array([xs + half, y0, z0]), 'right': np.array([xs - half, -y0, z0])}   # links voor
+    foot_th = {'left': 0.0, 'right': 0.0}   # voetkanteling rond de teen (hiel op) van een voet die op de grond staat
     body_x = xs                                   # midden tussen de voeten (x)
     q, b = kin.home.copy(), np.array([0, 0, H0, 0.0])
     def frame(f, cxy, contact, z=H0, rot=None):
@@ -139,9 +140,11 @@ def maak(shift_s=0.5, swing_s=0.24, back_s=0.5, hold_s=1.0, half=5.0e-3, lift=0.
             # 2026-11-26 (Jairo: geen vertraging): afzetten + zwaaien = EEN voetbaan zonder stilstand. Afzetten: hiel op,
             # draaien om de voorrand van de zool, versnellend (kwadratisch) zodat de zwaai met snelheid begint.
             t_in = ul * shift_s - (shift_s - Tp)
-            push = P * (t_in / Tp) ** 2 if t_in > 0 else 0.0
+            th0 = foot_th[swing]                   # 2026-11-26: achterste voet staat al op de teen (afgerold)
+            push = th0 + (P - th0) * (t_in / Tp) ** 2 if t_in > 0 else th0
             f = dict(feet); f[swing] = teen_site(start, push)
             frame(f, np.array([cx(ul * shift_s), mid[1] + u * (tgt[1] - mid[1])]), (1, 1), H0 + strek * u, {swing: Ry_(push)})
+        foot_th[swing] = 0.0
         # zwaai: begint met de stand EN de snelheid van het afzetten (Hermite-krommen)
         v_h = np.array([HEEL_DX, 0.0, kin.site_above_floor['left']])
         def heel_ref(th):        # hielpunt-referentie (zoals hiel_site verwacht) tijdens het afzetten
@@ -166,17 +169,23 @@ def maak(shift_s=0.5, swing_s=0.24, back_s=0.5, hold_s=1.0, half=5.0e-3, lift=0.
             f[swing] = hiel_site(p, th)
             frame(f, c, (1, 0) if stand == 'left' else (0, 1), H0 + strek, {swing: Ry_(th)})   # standbeen gestrekt
         feet[swing] = end
-        newmid = np.array([(feet['left'][0] + feet['right'][0]) / 2 + COM_DX, 0.0])
+        # 2026-11-26 (Jairo: de teen van het standbeen moet afrollen): na het landen gaat het gewicht naar de voorste voet
+        # en rolt de achterste (de standvoet van deze pas) af over de teen: hiel op; zo staat hij klaar voor de volgende pas
+        newmid = np.array([(feet['left'][0] + feet['right'][0]) / 2 + COM_DX + voor, 0.0])
+        tr = math.radians(stand_rol)
         c0 = frames[-1]['com'].copy()
         n = int(back_s * fps)
         for k in range(n):
             u = mj((k + 1) / n)
             # hiel staat, voet rolt af (teen ontspant) in het eerste deel van 'terug'
             th = -math.radians(hiel) * (1 - mj((k + 1) / max(1, rol * n)))
-            f = dict(feet); f[swing] = hiel_site(end, th)
-            frame(f, c0 + u * (newmid - c0), (1, 1), H0 + strek * (1 - u), {swing: Ry_(th)})
+            ts = tr * u
+            f = dict(feet); f[swing] = hiel_site(end, th); f[stand] = teen_site(feet[stand], ts)
+            frame(f, c0 + u * (newmid - c0), (1, 1), H0 + strek * (1 - u), {swing: Ry_(th), stand: Ry_(ts)})
+        foot_th[stand] = tr
         for k in range(int(hold_s * fps)):
-            frame(feet, newmid, (1, 1))
+            f = dict(feet); f[stand] = teen_site(feet[stand], tr)
+            frame(f, newmid, (1, 1), H0, {stand: Ry_(tr)})
     return frames
 
 if __name__ == "__main__":
