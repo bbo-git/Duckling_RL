@@ -108,7 +108,7 @@ def herm(t, t0, t1, p0, p1, m0, m1):
 def mj(u):  # min-jerk 0..1
     u = np.clip(u, 0, 1); return u**3 * (10 - 15*u + 6*u*u)
 
-def maak(shift_s=0.5, swing_s=0.24, back_s=0.5, hold_s=1.0, half=5.0e-3, lift=0.020, com_y=0.0105, com_x_ahead=-0.002, fall_x=0.0, fall_y=0.6, land_pow=2.0, rise=0.3, strek=0.003, teen=25.0, hiel=12.0, rol=0.2, afzet=0.35, afzet_deg=15.0, top=0.3, stand_rol=0.0, voor=0.0,
+def maak(shift_s=0.5, swing_s=0.24, back_s=0.5, hold_s=1.0, half=5.0e-3, lift=0.020, com_y=0.0105, com_x_ahead=-0.002, fall_x=0.0, fall_y=0.6, land_pow=2.0, rise=0.3, strek=0.003, teen=25.0, hiel=12.0, rol=0.2, afzet=0.35, afzet_deg=15.0, top=0.3, stand_rol=0.0, voor=0.0, afzet_exp=1.4,
          head_roll=True, fps=50):
     """half = halve paslengte: in rust staan de voeten +-half verspringend; elke zwaai verplaatst de voet 4*half."""
     y0 = home_feet['left'][1]; xs = home_feet['left'][0]; z0 = home_feet['left'][2]
@@ -141,7 +141,7 @@ def maak(shift_s=0.5, swing_s=0.24, back_s=0.5, hold_s=1.0, half=5.0e-3, lift=0.
             # draaien om de voorrand van de zool, versnellend (kwadratisch) zodat de zwaai met snelheid begint.
             t_in = ul * shift_s - (shift_s - Tp)
             th0 = foot_th[swing]                   # 2026-11-26: achterste voet staat al op de teen (afgerold)
-            push = th0 + (P - th0) * (t_in / Tp) ** 2 if t_in > 0 else th0
+            push = th0 + (P - th0) * (t_in / Tp) ** afzet_exp if t_in > 0 else th0   # exp < 2: hiel komt eerder op
             f = dict(feet); f[swing] = teen_site(start, push)
             frame(f, np.array([cx(ul * shift_s), mid[1] + u * (tgt[1] - mid[1])]), (1, 1), H0 + strek * u, {swing: Ry_(push)})
         foot_th[swing] = 0.0
@@ -150,7 +150,7 @@ def maak(shift_s=0.5, swing_s=0.24, back_s=0.5, hold_s=1.0, half=5.0e-3, lift=0.
         def heel_ref(th):        # hielpunt-referentie (zoals hiel_site verwacht) tijdens het afzetten
             return teen_site(start, th) + v_h - Ry_(th) @ v_h
         p0 = heel_ref(P)
-        dth = 2 * P / Tp                                           # rad/s aan het eind van het afzetten
+        dth = afzet_exp * P / Tp                                   # rad/s aan het eind van het afzetten
         v0 = (heel_ref(P + 1e-4) - heel_ref(P - 1e-4)) / 2e-4 * dth * swing_s   # m per u
         m0 = dth * swing_s
         peak = max(P, math.radians(teen))
