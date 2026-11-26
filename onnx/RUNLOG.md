@@ -83,3 +83,17 @@ Regel: één verandering per run waar het kan.
 - 150 (gemeten): zwaaivoet gaat met heup-roll (+0.45) 6 mm naar buiten (breedte 49 -> 60 mm), nauwelijks vooruit; Jairo: "meer
   opzij dan naar voren, blijft haken". -> stance_width in pasjes: max 52 mm (HOME 49 + 3), straf -400 (was 56 mm, -200). Hervat vanaf 150.
 - Pasjes om en om: een nieuwe reeks begint altijd met de andere voet dan de vorige eindigde (training; firmware/player volgen).
+- 200 (v4): om en om ok, maar schuifel. Rooster v4 nagerekend: bij het leunen kantelen de zolen mee (geen enkel-roll),
+  standvoet 2.7-2.9 mm met de rand "in de vloer", zwaaivoet maar ~0.25 s echt los. CONCLUSIE: quasi-statisch kan deze
+  eend niet. Zool plat = heup recht boven de voet (HOME, 49 mm breed); gewicht kan dan maar ~5 mm opzij (romp/kop),
+  zoolrand zit 11 mm naast het midden. Kort slingertje (~0.1 s): een pas moet dynamisch, ~0.25-0.3 s.
+
+## 2026-11-26 ~09-40 — DYNAMISCHE PASJES v5 (nieuwe run vanaf 0)
+- Jairo: "elke stap een element van de echte walk: gewicht opzij en naar voren, balans pakken door de voet naar voren te
+  zetten, en weer stoppen". Rust zit TUSSEN de pasjes, niet erin.
+- Rooster gait_grid_pasje_v5.npz (walk_speed.py --pasje-dyn): het loopje normaal_v3 (cadans 0.5 s, LIPM-zwaai), maar tot
+  45 % op HOME-hoogte (kniesprong bij de start 22 -> 11 gr), voet 8 mm op, geen afzet, minder doorveren.
+- DUCK_ROOSTER=dyn (standaard; pasje = v4, oud = normaal_v3). Pasjes 20-30 % (4.5-6.7 mm), 400: tot 45 %, 800: 8 passen tot 60 %.
+  residual_l2 -1 (balans vraagt bijsturen), snelheid std 10/30 mm/s, swing_clearance 6 (doel 6.4 mm), om en om, rust 0.5-1.5 s.
+- Opgelost sinds de eerste pasjes-run (schok op de eend): kniesprong bij de start, "lopen"-drempel 0.02 m/s (20 % telde als
+  stilstaan), firmware startte midden in een halve cyclus.

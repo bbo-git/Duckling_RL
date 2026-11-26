@@ -38,11 +38,15 @@ STYLE = "favorites/jairo_walk_v5.npz"
 SPEEDS = np.round(np.concatenate([[-0.5, -0.35, -0.2, 0.0], np.linspace(0.2, 1.0, 9)]), 3)
 # 2026-11-26: rustige pasjes bij lage snelheid (--pasje). Onder PASJE_TOT is elk pasje quasi-statisch:
 # gewicht over de standvoet, voet op, neerzetten, gewicht terug naar het midden; trage cadans.
-PASJE = dict(aan=("--pasje" in sys.argv or os.environ.get("DUCK_PASJE") == "1"), tot=0.30, vlot=0.50, cycle=(0.06, 2.0, 0.30, 1.0), ds=0.30, lift=0.006, width=0.0493, waddle=0.5, frac=0.5)   # width = HOME-voetbreedte; v3: romp ~11 mm opzij en licht leunen (v1 20 mm = skien)
+PASJE = dict(aan=("--pasje" in sys.argv or os.environ.get("DUCK_PASJE") == "1"), tot=0.30, vlot=0.50, cycle=(0.06, 2.0, 0.30, 1.0), ds=0.30, lift=0.010, width=0.0493, waddle=0.5, frac=0.7)   # width = HOME-voetbreedte; v4: romp ~16 mm opzij + 8 gr leunen, voet 10 mm op (v3 11 mm: voet kwam niet los)
 SPEEDS_PASJE = np.array([-0.5, -0.35, -0.2, 0.0, 0.06, 0.09, 0.12, 0.16, 0.2, 0.3, 0.5, 0.75, 1.0])
 WALK_S0_PASJE = 0.05   # onder deze snelheid mengt het rooster naar stilstaan (normaal 0.15)
 if PASJE["aan"]:
     SPEEDS = SPEEDS_PASJE
+# 2026-11-26 (v5, Jairo: "elke stap een element van de echte walk"): dynamische pasjes = het loopje zelf
+# (zelfde cadans, ~0.25 s per pas), maar op HOME-hoogte (geen kniesprong bij de start), voet 8 mm op,
+# geen afzet, minder doorveren. Quasi-statisch kan deze eend niet zonder enkel-roll (zie RUNLOG).
+PASJE_DYN = dict(aan=("--pasje-dyn" in sys.argv or os.environ.get("DUCK_PASJE") == "dyn"), tot=0.45, vlot=0.80, lift=0.008)
 # negative = walking backwards (2026-10-13): your walk at |speed|, relaxed, steps reversed
 TURNS = np.array([-90.0, -45.0, 0.0, 45.0, 90.0])          # deg/s, + = left
 SIDES = np.array([-0.010, 0.0, 0.010])                     # m per cycle, + = left
@@ -147,7 +151,17 @@ def rule_params(base: G.GaitParams, s: float) -> G.GaitParams:
         p.double_support *= 1.0 - 0.5 * rr
         p.dip_m *= 1.0 - 0.5 * rr
         p.bob_m *= 1.0 - 0.5 * rr
+    if PASJE_DYN["aan"] and sv > 0:
+        k = float(G._smooth((PASJE_DYN["vlot"] - sv) / (PASJE_DYN["vlot"] - PASJE_DYN["tot"])))
+        if k > 0:
+            L = lambda a, b: a + (b - a) * k
+            p.height_m = L(p.height_m, HOME_H)
+            p.pitch_deg = L(p.pitch_deg, 0.0)
+            p.lift_m = L(p.lift_m, max(p.lift_m, PASJE_DYN["lift"]))
+            p.push_deg *= 1 - k
+            p.dip_m *= 1 - 0.7 * k; p.bob_m *= 1 - 0.7 * k
     if PASJE["aan"] and sv > 0:
+
         k = float(G._smooth((PASJE["vlot"] - sv) / (PASJE["vlot"] - PASJE["tot"])))   # 1 = rustig pasje
         if k > 0:
             L = lambda a, b: a + (b - a) * k
@@ -423,6 +437,7 @@ def main():
     ap.add_argument("--style", default=STYLE)
     ap.add_argument("--anchor", nargs="*", default=[], help="pct=bestand.npz, bv. 40=favorites/langzaam.npz")
     ap.add_argument("--view", action="store_true")
+    ap.add_argument("--pasje-dyn", action="store_true", help="dynamische pasjes = het loopje op HOME-hoogte (v5, 2026-11-26)")
     ap.add_argument("--pasje", action="store_true", help="rustige quasi-statische pasjes tot 30 %% (2026-11-26)")
     ap.add_argument("--check", action="store_true")
     ap.add_argument("--print", type=float, default=None, metavar="PCT")

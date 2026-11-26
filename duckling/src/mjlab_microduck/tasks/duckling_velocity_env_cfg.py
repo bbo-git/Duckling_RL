@@ -60,8 +60,15 @@ STYLES = [   # (naam, rooster in robot/duckling/grids/)
 # 2026-11-26 (Jairo: "gewicht op links, pas maken, gewicht weer verdelen, op een rustige manier"):
 # pasje-rooster = rustige, quasi-statische pasjes tot 30 % (1 s per pasje bij 6 %), daarboven het oude loopje.
 # Beide plekken hetzelfde rooster: de one-hot blijft 2 lang, dus hervatten en firmware blijven passen.
-if os.environ.get("DUCK_ROOSTER", "pasje") == "pasje":
+# 2026-11-26 (v5): DYNAMISCHE pasjes = het loopje zelf (~0.25 s per pas), op HOME-hoogte, voet 8 mm op. Quasi-statisch
+# (v1-v4) kan deze eend niet: zonder enkel-roll is de zool alleen plat met de heup recht boven de voet, dan kan het
+# gewicht maar ~5 mm opzij en zit de zoolrand 11 mm naast het midden -> v4 stond op de zoolrand en schuifelde.
+ROOSTER = os.environ.get("DUCK_ROOSTER", "dyn")      # dyn (v5) | pasje (v4, quasi-statisch) | oud (normaal_v3)
+PJ = ROOSTER in ("pasje", "dyn")
+if ROOSTER == "pasje":
     STYLES = [("normaal", "gait_grid_pasje_v4.npz"), ("parmantig", "gait_grid_pasje_v4.npz")]
+elif ROOSTER == "dyn":
+    STYLES = [("normaal", "gait_grid_pasje_v5.npz"), ("parmantig", "gait_grid_pasje_v5.npz")]
 STYLE_PROBS = (1.0, 0.0)   # 2026-11-19: eerst alleen "normaal" (one-hot blijft 2 lang: firmware ongewijzigd)
 # Taak: "lopen" (snelheidscommando's, eerst trainen) of "volgen" (persoon volgen, fine-tune daarna)
 TASK = os.environ.get("DUCK_TASK", "lopen")
@@ -117,7 +124,7 @@ def _stance_too_wide(env, max_width: float, asset_cfg: SceneEntityCfg, per_style
     lateral = -torch.sin(yaw) * diff[:, 0] + torch.cos(yaw) * diff[:, 1]
     if per_style:   # 2026-10-29: voetbreedte van de stijl + STANCE_SLACK (parmantig staat breder)
         max_width = _style_tensor(env, "width")[env_style(env)] + STANCE_SLACK
-        if os.environ.get("DUCK_ROOSTER", "pasje") == "pasje":
+        if ROOSTER == "pasje":
             max_width = 0.0493 + 0.003   # 2026-11-26: pasje-rooster = HOME-voetbreedte; 150 zette de voet 6 mm opzij
     return torch.clamp(lateral.abs() - max_width, min=0.0)
 
@@ -333,12 +340,15 @@ class BehaviorVelocityCommand(StyleVelocityCommand):
     # lopen op snelheid f -> staan. Curriculum op iteratie: n en f groeien.
     PASJES_STAGES = [   # (vanaf iteratie, max passen, min en max snelheid als fractie van v100)
         (0, 1, 0.20, 0.25), (300, 2, 0.20, 0.30), (600, 4, 0.20, 0.40), (900, 8, 0.20, 0.50)]
-    if os.environ.get("DUCK_ROOSTER", "pasje") == "pasje":
+    if ROOSTER == "pasje":
         # 2026-11-26: rustige pasjes, hervat vanaf 600. 6 % = pasje van ~5 mm in 1 s, 9 % ~8 mm, 12 % ~10 mm,
         # 16 % ~13 mm, 20 % ~13 mm in 0.7 s. Eerst 300 iteraties alleen losse kleine pasjes.
         PASJES_STAGES = [(0, 1, 0.06, 0.09), (900, 2, 0.06, 0.12), (1200, 4, 0.06, 0.16), (1500, 8, 0.06, 0.20)]
         # 2026-11-26 (950 tilde nog niet op): meer pasjes per episode, eerst 2-4 klein, kortere rust
         PASJES_STAGES = [(0, 4, 0.06, 0.09), (1250, 4, 0.06, 0.12), (1500, 8, 0.06, 0.16), (1800, 8, 0.06, 0.20)]
+    if ROOSTER == "dyn":
+        # v5: 20 % = pas 4.5 mm, 30 % = 6.7 mm, 45 % = 10 mm (cadans van het loopje, ~0.25 s per pas)
+        PASJES_STAGES = [(0, 4, 0.20, 0.30), (400, 4, 0.20, 0.45), (800, 8, 0.20, 0.60)]
 
     def _pasjes(self):
         n_env, dev = self.num_envs, self.device
@@ -365,7 +375,7 @@ class BehaviorVelocityCommand(StyleVelocityCommand):
         go = (st == 0) & (self._pj_t <= 0)
         if go.any():
             k = int(go.sum())
-            self._pj_left[go] = torch.randint(2 if os.environ.get("DUCK_ROOSTER", "pasje") == "pasje" else 1, n_max + 1, (k,), device=dev)
+            self._pj_left[go] = torch.randint(2 if PJ else 1, n_max + 1, (k,), device=dev)
             self._pj_f[go] = torch.empty(k, device=dev).uniform_(f_min, max(f_max, f_min))
             st = torch.where(go, torch.ones_like(st), st)
         # wachten -> lopen op de grens van een halve cyclus (pas begint met een voet)
@@ -377,7 +387,7 @@ class BehaviorVelocityCommand(StyleVelocityCommand):
         done = (st == 2) & (self._pj_left <= 0)
         self._pj_last = torch.where(done, 1 - half, self._pj_last)
         if done.any():
-            self._pj_t[done] = torch.empty(int(done.sum()), device=dev).uniform_(*((0.5, 1.5) if os.environ.get("DUCK_ROOSTER", "pasje") == "pasje" else (1.0, 2.5)))
+            self._pj_t[done] = torch.empty(int(done.sum()), device=dev).uniform_(*((0.5, 1.5) if PJ else (1.0, 2.5)))
             st = torch.where(done, torch.zeros_like(st), st)
         self._pj_state = st
         v = torch.where(st == 2, self._pj_f * self._v100[self.style], torch.zeros_like(self._pj_f))
@@ -580,8 +590,8 @@ class _GridReference:
                 + int(np.argmin(np.abs(np.asarray(d["turns"])))) ) * nY + int(np.argmin(np.abs(np.asarray(d["sides"]))))
         self.i100_s = torch.tensor([s * G + i100 for s in range(len(grids))], dtype=torch.long, device=dev)
         self.lift_s = f([0.8 * r["lift"] for r in style_tables()])
-        if os.environ.get("DUCK_ROOSTER", "pasje") == "pasje":
-            self.lift_s = f([0.008 for _ in style_tables()])   # 2026-11-26: pasje-rooster v4 tilt 10 mm -> doel 8 mm
+        if PJ:
+            self.lift_s = f([0.0064 if ROOSTER == "dyn" else 0.008 for _ in style_tables()])   # dyn: 0.8 x 8 mm   # 2026-11-26: pasje-rooster v4 tilt 10 mm -> doel 8 mm
         self.width_s = f([r["width"] for r in style_tables()])
         self.phase = torch.zeros(env.num_envs, device=dev)
         self.dt = env.step_dt
@@ -1526,7 +1536,7 @@ def make_duckling_velocity_env_cfg(play: bool = False, rough: bool = False) -> M
     R["walk_imitation"] = RewardTermCfg(func=walk_imitation, weight=IMITATION_WEIGHT,
                                         params={"std": IMITATION_STD, "std_fine": 0.10})   # 2026-10-30: + fijn (250 waggelde: heup-roll 37 gr i.p.v. 12)
     R["contact_schedule"] = RewardTermCfg(func=contact_schedule, weight=4.0)   # timing as a guide
-    R["swing_clearance"] = RewardTermCfg(func=swing_clearance, weight=6.0 if os.environ.get("DUCK_ROOSTER", "pasje") == "pasje" else 3.0,   # 2026-11-26: pasjes 750 tilde niet op -> 6   # 2026-11-01: 1.5 -> 3   # lift the swing foot
+    R["swing_clearance"] = RewardTermCfg(func=swing_clearance, weight=6.0 if PJ else 3.0,   # 2026-11-26: pasjes 750 tilde niet op -> 6   # 2026-11-01: 1.5 -> 3   # lift the swing foot
                                          params={"target": SWING_LIFT})
     R["trunk_height"] = RewardTermCfg(func=trunk_height_tracking, weight=1.5,   # 2026-10-13: 1 -> 1.5, std 6 -> 4 mm:
                                       params={"std": 0.004})                       # the springy sag is character
@@ -1552,8 +1562,8 @@ def make_duckling_velocity_env_cfg(play: bool = False, rough: bool = False) -> M
     R["com_forward"] = RewardTermCfg(func=com_forward, weight=5.0)   # 2026-10-14: CoM ahead of the feet (your walk)
     R["stance_grip"] = RewardTermCfg(func=stance_grip, weight=1.5)   # 2026-10-13: no sliding feet
     R["stand_action_rate"] = RewardTermCfg(func=stand_action_rate, weight=-1.0)   # at rest: no wiggling
-    if RESIDUAL and os.environ.get("DUCK_ROOSTER", "pasje") == "pasje":
-        R["residual_l2"] = RewardTermCfg(func=residual_l2, weight=-4.0)   # 2026-11-26: volg het pasje
+    if RESIDUAL and PJ:
+        R["residual_l2"] = RewardTermCfg(func=residual_l2, weight=-1.0 if ROOSTER == "dyn" else -4.0)   # dyn: balans vraagt bijsturen   # 2026-11-26: volg het pasje
     # task
     R["track_linear_velocity"].weight = 2.0      # 2026-10-15: 4 -> 2, the follow rewards lead (13: 2 -> 4)
     R["track_linear_velocity"].func = track_lin_two_scale      # 2026-10-14: fine 0.03 + coarse 0.10 m/s
@@ -1580,7 +1590,7 @@ def make_duckling_velocity_env_cfg(play: bool = False, rough: bool = False) -> M
     R["dof_pos_limits"].params["asset_cfg"] = SceneEntityCfg(
         "robot", joint_names=(r"^(?!passive_).*",))   # passive jaw rests on its limit
     R["stance_width"] = RewardTermCfg(
-        func=_stance_too_wide, weight=-400.0 if os.environ.get("DUCK_ROOSTER", "pasje") == "pasje" else -200.0,   # 2026-11-01: -100 -> -200; pasjes -400
+        func=_stance_too_wide, weight=-400.0 if PJ else -200.0,   # 2026-11-01: -100 -> -200; pasjes -400
         params={"max_width": STANCE_MAX_WIDTH,
                 "asset_cfg": SceneEntityCfg("robot", site_names=("left_foot", "right_foot"))},
     )
@@ -1690,7 +1700,7 @@ def make_duckling_velocity_env_cfg(play: bool = False, rough: bool = False) -> M
             # 0-20 % = 0-4.5 mm, trappelen op de plaats. 20-50 % = echte pasjes van 4.5-11 mm. Stilstaan komt uit
             # de stilsta-envs (40 %).
             cmd.ranges.lin_vel_x = (0.2, 0.5)
-            if os.environ.get("DUCK_ROOSTER", "pasje") == "pasje":
+            if ROOSTER == "pasje":
                 cmd.ranges.lin_vel_x = (0.06, 0.2)   # (de opdracht komt toch uit _pasjes)
             cmd.ranges.ang_vel_z = (0.0, 0.0)
             cmd.rel_turn_in_place_envs = 0.0
@@ -1706,10 +1716,12 @@ def make_duckling_velocity_env_cfg(play: bool = False, rough: bool = False) -> M
         for name in ("follow_distance", "follow_bearing", "turn_toward", "push_off", "back_off"):
             R.pop(name, None)
         R["track_linear_velocity"].weight = 4.0
-        if FASE == "pasjes" and os.environ.get("DUCK_ROOSTER", "pasje") == "pasje":
+        if FASE == "pasjes" and PJ:
             # 2026-11-26 (Jairo: "beloon je de stapafstand?"): pasjes vragen 5-11 mm/s. Met std 0.03 m/s kreeg
             # stilstaan bij een 9 %-opdracht nog 93 % van deze beloning. Nu 6 mm/s fijn, 20 mm/s ruim: ~50 %.
             R["track_linear_velocity"].params = {"std_fine": 0.006, "std_coarse": 0.02, "command_name": "twist"}
+            if ROOSTER == "dyn":   # pasjes 18-40 mm/s
+                R["track_linear_velocity"].params = {"std_fine": 0.01, "std_coarse": 0.03, "command_name": "twist"}
         R["track_angular_velocity"] = RewardTermCfg(
             func=track_ang_two_scale, weight=6.0,   # 2026-10-31: 4 -> 6 (2900 haalde ~40 % van de draaisnelheid)
             params={"std_fine": 0.15, "std_coarse": 0.6, "command_name": "twist"})   # 2026-10-30: 0.25 -> 0.15 (1050 draaide niet)
