@@ -289,6 +289,8 @@ class BehaviorVelocityCommand(StyleVelocityCommand):
             self.is_standing_env[env_ids] &= ~self.is_beh[env_ids]
             if hasattr(self, "_pj_state"):   # pasjes: nieuwe episode begint met staan
                 self._pj_state[env_ids] = 0
+                if hasattr(self, "_pj_last"):
+                    self._pj_last[env_ids] = -1
                 self._pj_t[env_ids] = torch.rand(k, device=self.device) * 1.5 + 0.5
         return out
 
@@ -346,6 +348,7 @@ class BehaviorVelocityCommand(StyleVelocityCommand):
             self._pj_left = torch.zeros(n_env, dtype=torch.long, device=dev)
             self._pj_f = torch.zeros(n_env, device=dev)
             self._pj_half = torch.zeros(n_env, dtype=torch.long, device=dev)
+            self._pj_last = torch.full((n_env,), -1, dtype=torch.long, device=dev)   # laatst gelopen halve cyclus
         dt = self._env.step_dt
         it = self._env.common_step_counter / 24.0
         n_max, f_min, f_max = 1, 0.20, 0.25
@@ -366,11 +369,13 @@ class BehaviorVelocityCommand(StyleVelocityCommand):
             self._pj_f[go] = torch.empty(k, device=dev).uniform_(f_min, max(f_max, f_min))
             st = torch.where(go, torch.ones_like(st), st)
         # wachten -> lopen op de grens van een halve cyclus (pas begint met een voet)
-        st = torch.where((st == 1) & crossed, torch.full_like(st, 2), st)
+        # 2026-11-26 (Jairo: "om en om links en rechts"): de volgende reeks begint met de ANDERE voet
+        st = torch.where((st == 1) & crossed & (half != self._pj_last), torch.full_like(st, 2), st)
         # lopen: elke halve cyclus = 1 pas; klaar -> staan
         walk_cross = (st == 2) & crossed & (self._pj_state == 2)
         self._pj_left = torch.where(walk_cross, self._pj_left - 1, self._pj_left)
         done = (st == 2) & (self._pj_left <= 0)
+        self._pj_last = torch.where(done, 1 - half, self._pj_last)
         if done.any():
             self._pj_t[done] = torch.empty(int(done.sum()), device=dev).uniform_(*((0.5, 1.5) if os.environ.get("DUCK_ROOSTER", "pasje") == "pasje" else (1.0, 2.5)))
             st = torch.where(done, torch.zeros_like(st), st)
