@@ -662,9 +662,14 @@ void loop() {
       idle_ph = idle ? idle_ph + DT_CTRL / IDLE_SHIFT_S : idle_ph;
       idle_t += clampf((idle ? 1.0f : 0.0f) - idle_t, -DT_CTRL / 1.5f, DT_CTRL / 1.5f);   // schuiven in/uit in 1.5 s (niet bij camera: lijf beweegt de camera)
       float sh = idle_t * IDLE_SHIFT * sinf(6.2831853f * idle_ph);
+#if KIJK_RUST
+      // 2026-11-27: rondkijken als kijkopdracht aan het netwerk (getraind met kijken in rust), niet er buiten om
+      head_cmd[0] = -0.4f * idle_cur[1]; head_cmd[1] = 0.6f * idle_cur[1]; head_cmd[2] = idle_cur[0]; head_cmd[3] = clampf(idle_cur[2], -0.15f, 0.15f);   // = bereik in de training
+#else
       offs[HYAW] += idle_cur[0];
       offs[HPITCH] += 0.6f * idle_cur[1]; offs[NECK] -= 0.4f * idle_cur[1];   // omhoog = kop-pitch + en nek - (elevatie = kop - nek)
       offs[HROLL] += idle_cur[2];
+#endif
       offs[LHR] += sh; offs[RHR] -= sh;    // beide benen dezelfde kant op = romp schuift opzij
       // snavel: open-dicht-open (snaterend), dan dicht; bij lopen altijd dicht
       if (!idle) kaak_keer = 0;

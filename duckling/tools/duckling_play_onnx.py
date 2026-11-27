@@ -135,6 +135,7 @@ def model_with_sliders(scene):
 
 
 RES_SCALE_LEG, RES_SCALE_HEAD = 0.30, 0.20   # 2026-11-26: = duckling_velocity_env_cfg.py (RESIDUAL)
+KIJK_RUST = os.environ.get("DUCK_KIJK_RUST", "1") == "1"   # 2026-11-27: kijken ook in rust (netwerken van voor 27 nov: 0)
 RES_SCALE_HIP_ROLL = float(os.environ.get("DUCK_RES_HEUPROL", "0.12"))   # 2026-11-27; netwerken van voor 27 nov: DUCK_RES_HEUPROL=0.3
 
 
@@ -305,8 +306,8 @@ class Duckling:
         else:   # 2026-10-31: geschatte stand uit de eigen servodoelen (geen encoders), = training/firmware
             jpos = self.est - self.home
             jvel = (self.est - self.est_prev) / (TIMESTEP * DECIMATION)
-        if self.grid is not None and not (np.hypot(twist[0], twist[1]) > 0.004 or abs(twist[2]) > 0.1):
-            head = np.zeros(4)              # as in training: no look commands while standing still
+        if self.grid is not None and not KIJK_RUST and not (np.hypot(twist[0], twist[1]) > 0.004 or abs(twist[2]) > 0.1):
+            head = np.zeros(4)              # as in training: no look commands while standing still (tot 27 nov)
         parts = [ang_vel_b, grav_b, jpos, jvel, self.last_action, twist, head, np.zeros(6)]
         if self.gait_clock:
             ph = 2 * np.pi * self.phase
@@ -325,7 +326,7 @@ class Duckling:
         self.last_action = action.copy()
         if getattr(self, "residual", False):   # 2026-11-26: doel = jouw loopje + klein bijsturen (= training)
             moving = twist is not None and (np.hypot(twist[0], twist[1]) > 0.004 or abs(twist[2]) > 0.1)
-            hc = getattr(self, "head_cmd", np.zeros(4)) if moving else np.zeros(4)
+            hc = getattr(self, "head_cmd", np.zeros(4)) if (moving or KIJK_RUST) else np.zeros(4)
             base = g.base(twist if twist is not None else np.zeros(3), self.phase, self.names, self.home, hc)
             res = np.array([RES_SCALE_HEAD if n in ("neck_pitch", "head_pitch", "head_roll", "head_yaw")
                             else (RES_SCALE_HIP_ROLL if n.endswith("hip_roll") else RES_SCALE_LEG) for n in self.names])

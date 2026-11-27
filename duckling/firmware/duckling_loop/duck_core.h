@@ -99,7 +99,10 @@ static inline void grid_base(float vx, float vy, float wz, float phase, const fl
   bool moving = sqrtf(vx * vx + vy * vy) > 0.004f || fabsf(wz) > 0.1f;
   // kijkopdracht (nek, kop-pitch, kop-yaw, kop-roll) -> gewrichtsvolgorde
   float hc[NJ] = {0};
-  if (moving && head) { hc[NECK] = head[0]; hc[HPITCH] = head[1]; hc[HYAW] = head[2]; hc[HROLL] = head[3]; }
+#ifndef KIJK_RUST
+#define KIJK_RUST 1   // 2026-11-27: kijkopdracht ook in rust (netwerken van voor 27 nov: 0)
+#endif
+  if ((moving || KIJK_RUST) && head) { hc[NECK] = head[0]; hc[HPITCH] = head[1]; hc[HYAW] = head[2]; hc[HROLL] = head[3]; }
   for (int k = 0; k < NJ; k++) {
     bool is_head = (k == NECK || k == HPITCH || k == HROLL || k == HYAW);
     out[k] = is_head ? hc[k] + walk * (q[k] - STAND_Q[k]) : walk * q[k] + (1 - walk) * STAND_Q[k];
@@ -127,7 +130,7 @@ struct Duck {
     for (int j = 0; j < NJ; j++) o[k++] = last_action[j];
     for (int i = 0; i < 3; i++) o[k++] = twist[i];
     bool moving = sqrtf(twist[0] * twist[0] + twist[1] * twist[1]) > 0.004f || fabsf(twist[2]) > 0.1f;
-    for (int i = 0; i < 4; i++) o[k++] = moving ? head[i] : 0.0f;               // = training: geen kijkopdracht bij stilstaan
+    for (int i = 0; i < 4; i++) o[k++] = (moving || KIJK_RUST) ? head[i] : 0.0f;               // = training: geen kijkopdracht bij stilstaan
     for (int i = 0; i < 6; i++) o[k++] = 0.0f;
     float w = grid_walk(twist[0], twist[1], twist[2]);
     o[k++] = w * sinf(6.2831853f * phase);

@@ -1468,11 +1468,16 @@ class _BehaviorHeadPoseCfg(_mdp.UniformPoseCommandCfg):
         return _BehaviorHeadPoseCommand(self, env)
 
 
+KIJK_RUST = os.environ.get("DUCK_KIJK_RUST", "1") == "1"   # 2026-11-27: kijkopdrachten ook bij stilstaan
+
+
 def head_command_when_moving(env, command_name: str = "head_pose") -> torch.Tensor:
     """The look-around command, but zero for envs told to stand still (2026-10-13: the head
     kept jittering at rest - standing envs were sent new random look targets every few
     seconds over the full range). Used for the observation AND the head reward."""
     cmd = env.command_manager.get_command(command_name)
+    if KIJK_RUST:   # 2026-11-27 (Jairo: pasjes + stilstaan + rondkijken): ook in rust kijken, het netwerk weet het
+        return cmd
     return cmd * _moving(env).float()[:, None]
 
 
@@ -1935,6 +1940,10 @@ def make_duckling_velocity_env_cfg(play: bool = False, rough: bool = False) -> M
         {"step": 800 * 24, "ranges": _head_stage(0.65)},
         {"step": 1300 * 24, "ranges": _head_stage(1.0)},   # 2026-11-01: 1000 -> 1300 (na 1000 ging het mis)
     ]
+    if KIJK_RUST:   # 2026-11-27: rondkijken in rust + lopen al in een run van 600
+        cfg.curriculum["head_pose_range"].params["range_stages"] = [
+            {"step": 0, "ranges": _head_stage(0.15)}, {"step": 150 * 24, "ranges": _head_stage(0.4)},
+            {"step": 300 * 24, "ranges": _head_stage(0.7)}, {"step": 450 * 24, "ranges": _head_stage(1.0)}]
 
     # --- CoM randomization scaled to the smaller support polygon
     if "com_range" in cfg.curriculum:
