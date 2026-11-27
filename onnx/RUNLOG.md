@@ -176,3 +176,5 @@ Regel: één verandering per run waar het kan.
 - Kop-roll deels vrij (Jairo: trillingen opvangen): fout op kop-roll telt x0.25 in head_pose_tracking en head_level (DUCK_KOP_ROLL_VRIJ). Residu-bereik kop blijft 0.2 rad (~11 gr).
 - Nek- en kop-pitch half vrij (Jairo): fout x0.5 in head_pose_tracking, head_calm -0.025 (DUCK_KOP_PITCH_VRIJ). Let op terugkeer van het knikken (run 25 nov: 30-38 gr per pas).
 - DOEL LATER (Jairo: loop_v1/v2 is nog geen vloeiende loop): nieuw ontwerp i.p.v. losse fasen - doorlopende heupgolf (niet terug naar het midden), zwaai overlapt met gewichtsverplaatsing, cadans op de eigen wiegfrequentie (zoals de microduck).
+- Loop-run (27 nov) 250 in de sim: heup-roll +-19 (ontwerp 6), romp +-20, maar 54 mm vooruit in 20 s. Straf -3 te zwak. Nu harde grens: residu-schaal heup-roll 0.12 (~7 gr) i.p.v. 0.3 (training, player, firmware). Oude netwerken: player DUCK_RES_HEUPROL=0.3, firmware --res-heuprol 0.3.
+- Teen-afrol standbeen (stand_duw 8/15) en zwaartepunt verder voor in het ontwerp: open lus slechter of valt -> niet in het ontwerp; vooruit moet het netwerk leren.

@@ -1134,6 +1134,8 @@ HEAD_JOINT_NAMES = ("neck_pitch", "head_pitch", "head_roll", "head_yaw")
 RESIDUAL = True
 RES_SCALE_LEG = 0.30    # rad per eenheid uitvoer (~17 gr)
 RES_SCALE_HEAD = 0.20
+# 2026-11-27: heup-roll mag maar ~7 gr bijsturen (loop-run 250 zwaaide +-19 gr, ontwerp 6; straf -3 hielp niet)
+RES_SCALE_HIP_ROLL = 0.12
 
 
 @_dc(kw_only=True)
@@ -1184,7 +1186,7 @@ class FilteredJointPositionAction(_JPA):
             names = list(self._target_names)
             self._leg_pos = torch.tensor([names.index(j) for j in LEG_JOINTS], device=self.device)
             self._head_pos = torch.tensor([names.index(j) for j in HEAD_JOINTS], device=self.device)
-            self._res = torch.tensor([RES_SCALE_HEAD if n in HEAD_JOINT_NAMES else RES_SCALE_LEG for n in names],
+            self._res = torch.tensor([RES_SCALE_HEAD if n in HEAD_JOINT_NAMES else (RES_SCALE_HIP_ROLL if n.endswith("hip_roll") else RES_SCALE_LEG) for n in names],
                                      device=self.device)
             lo, hi = [], []
             for n in names:

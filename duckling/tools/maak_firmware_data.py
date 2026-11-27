@@ -50,6 +50,7 @@ def main():
     ap.add_argument("--calib", required=True)
     ap.add_argument("--uit", default=".")
     ap.add_argument("--anim-snelheid", type=float, default=0.5, help="loopje voor 'anim' (fractie van v100)")
+    ap.add_argument("--res-heuprol", type=float, default=0.12, help="residu-schaal heup-roll (0.3 voor netwerken van voor 27 nov)")
     ap.add_argument("--snelheden", default="", help="komma-lijst: alleen deze snelheden naar de firmware")
     ap.add_argument("--bochten", default="", help="komma-lijst: alleen deze bochten (graden)")
     ap.add_argument("--residu", action="store_true",
@@ -69,7 +70,7 @@ def main():
         f.write("#pragma once\n")
         f.write(f'#define POLICY_NAAM "{os.path.basename(a.onnx)}"\n')
         f.write(f"#define N_OBS {std.size}\n")
-        f.write(f"#define POLICY_RESIDUAL {1 if a.residu else 0}\n#define RES_SCALE_LEG 0.30f\n#define RES_SCALE_HEAD 0.20f\n")
+        f.write(f"#define POLICY_RESIDUAL {1 if a.residu else 0}\n#define RES_SCALE_LEG 0.30f\n#define RES_SCALE_HEAD 0.20f\n#define RES_SCALE_HIP_ROLL %.2ff\n" % a.res_heuprol)
         f.write(arr("OBS_MEAN", W["obs_normalizer._mean"]) + arr("OBS_STD", std))
         for i, (w, b) in enumerate(layers):
             f.write(f"#define L{i}_IN {w.shape[1]}\n#define L{i}_OUT {w.shape[0]}\n")

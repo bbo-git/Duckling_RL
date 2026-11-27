@@ -148,7 +148,11 @@ struct Duck {
       last_action[j] = action[j];
 #if POLICY_RESIDUAL
       bool is_head = (j == NECK || j == HPITCH || j == HROLL || j == HYAW);
-      float t = base[j] + (is_head ? RES_SCALE_HEAD : RES_SCALE_LEG) * action[j];   // loopje + bijsturen
+#ifndef RES_SCALE_HIP_ROLL
+#define RES_SCALE_HIP_ROLL RES_SCALE_LEG
+#endif
+      float rs = is_head ? RES_SCALE_HEAD : ((j == LHR || j == RHR) ? RES_SCALE_HIP_ROLL : RES_SCALE_LEG);
+      float t = base[j] + rs * action[j];   // loopje + bijsturen (2026-11-27: heup-roll eigen schaal)
 #else
       float t = action[j];                                                          // HOME + actie
 #endif
