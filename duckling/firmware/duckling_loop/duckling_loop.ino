@@ -72,7 +72,9 @@ static bool idle_aan = false; static float idle_cur[4] = {0}, idle_goal[4] = {0}
 #define IDLE_RATE 1.0f      // rad/s: duidelijk maar rustig draaien (was 0.6)
 #define IDLE_SHIFT 0.035f   // rad (~2 gr) heup-roll voor de gewichtsverplaatsing
 #define IDLE_SHIFT_S 6.0f   // s per keer links-rechts-links
-#define IDLE_KAAK 25.0f     // gr snavel open als hij "iets grappigs ziet"
+#define IDLE_KAAK_MIN 5.0f  // 2026-11-27 (Jairo): snavel 5-15 gr open als hij "iets grappigs ziet" (was 25)
+#define IDLE_KAAK_MAX 15.0f
+#define KAAK_DICHT_ONDER 0.30f   // rad: kijkt hij zoveel omlaag (kop - nek), dan snavel dicht (botst anders met de nek)
 static float kaak_goal = 0; static uint32_t kaak_dicht = 0; static int kaak_keer = 0;
 // 2026-11-26: camera-kijken (rondkijken cam): beweging buiten het midden -> kijk die kant op
 static bool idle_cam = false; static uint32_t cam_sacc_ok = 0, cam_seen = 0, cam_funny_ok = 0, head_moved = 0;
@@ -263,7 +265,11 @@ static void cam_send() {   // 50 Hz: kopstand + draaien van het lijf + wifi-wens
 static float kaak_deg = 0.0f;   // 2026-11-26: snavel open (+, graden); rondkijken opent hem soms
 static void servo_write_all(const float q[NJ], bool stagger) {
   float us[N_SERVO];
-  joints_to_us(q, kaak_deg, us);
+  // 2026-11-27: omlaag kijken met open snavel -> kaak tegen de nek. Hoe verder omlaag, hoe minder open; vanaf
+  // KAAK_DICHT_ONDER helemaal dicht. Elevatie = kop-pitch - nek (omhoog +).
+  float elev = q[HPITCH] - q[NECK];
+  float kaak_max = elev >= 0 ? IDLE_KAAK_MAX : IDLE_KAAK_MAX * clampf(1.0f + elev / KAAK_DICHT_ONDER, 0.0f, 1.0f);
+  joints_to_us(q, fminf(kaak_deg, kaak_max), us);
   for (int n = 0; n < N_SERVO; n++) {
     pwm_set_gpio_level(n, (uint16_t)(us[n] + 0.5f));
     if (stagger && !servo_on[n]) delay(ENABLE_STAGGER_MS);   // niet alles tegelijk: stroompiek
@@ -674,7 +680,7 @@ void loop() {
       // snavel: open-dicht-open (snaterend), dan dicht; bij lopen altijd dicht
       if (!idle) kaak_keer = 0;
       if (kaak_keer > 0 && (int32_t)(millis() - kaak_dicht) >= 0) {
-        kaak_goal = kaak_goal > 1 ? 0 : IDLE_KAAK;
+        kaak_goal = kaak_goal > 1 ? 0 : IDLE_KAAK_MIN + (IDLE_KAAK_MAX - IDLE_KAAK_MIN) * random(1001) / 1000.0f;
         if (kaak_goal == 0) kaak_keer--;
         kaak_dicht = millis() + (kaak_goal > 0 ? 250 + random(250) : 200);
       }
