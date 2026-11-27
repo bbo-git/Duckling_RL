@@ -169,3 +169,7 @@ Regel: één verandering per run waar het kan.
 - Training: hip_roll_residual -3 en vertraging tot 60 ms houden. Laatste UF2: netwerk 150 (stap v3 + heup-roll-straf), niet gevallen.
 - Grip: dun rubber/antislip onder de zolen (geen dik foam); voet slipt in yaw bij afzetten.
 - Echt, 150 (nieuwe run met heup-roll-straf): 2x oefen zonder val; heup-roll +-7 (ontwerp 6), romp -6..+7,5, knie tot +9 (ontwerp +13). 250 van de vorige run viel na een paar oefeningen (35 gr).
+
+## 27 nov - loopje v1 (stap v3 doorlopend)
+- Rooster gait_grid_stap_loop_v1.npz: hold 0, back 0,25, shift 0,35, zwaai 0,15 -> 0,72 s per pas, ~10 mm per pas. Open lus 12 passen schoon bij 1.0-2.0x (valt bij 0.7x).
+- Schema: 1-6 passen, vanaf 300 tot 12, vanaf 600 tot 24, met staan ertussen. Heup-roll-straf -3 en vertraging tot 60 ms blijven.
