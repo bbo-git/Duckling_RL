@@ -1628,6 +1628,14 @@ def hip_roll_residual(env) -> torch.Tensor:
     return torch.mean(torch.square(a[:, [1, 10]]), -1)
 
 
+def walk_action_rate(env) -> torch.Tensor:
+    """2026-11-27 (Jairo: gebibber op de echte eend): verandering van de been-acties per stap, tijdens het lopen.
+    Loop-run 200: |delta actie| enkels/knieen ~0.12 per 20 ms op de eend, 0.3 in de sim = trillen bovenop het loopje."""
+    d = env.action_manager.action - env.action_manager.prev_action
+    legs = [0, 1, 2, 3, 4, 9, 10, 11, 12, 13]
+    return torch.sum(torch.square(d[:, legs]), dim=1) * _moving(env).float()
+
+
 def stand_action_rate(env) -> torch.Tensor:
     """Action change per step, only for envs told to stand still: at rest the targets
     must not wiggle (2026-10-13: ankles and head kept jittering)."""
@@ -1751,7 +1759,8 @@ def make_duckling_velocity_env_cfg(play: bool = False, rough: bool = False) -> M
     R["feet_parallel"] = RewardTermCfg(func=feet_parallel, weight=2.0, params={"std": 0.15})   # 2026-10-30
     R["com_forward"] = RewardTermCfg(func=com_forward, weight=5.0)   # 2026-10-14: CoM ahead of the feet (your walk)
     R["stance_grip"] = RewardTermCfg(func=stance_grip, weight=1.5)   # 2026-10-13: no sliding feet
-    R["stand_action_rate"] = RewardTermCfg(func=stand_action_rate, weight=-1.0)   # at rest: no wiggling
+    R["stand_action_rate"] = RewardTermCfg(func=stand_action_rate, weight=-1.0)
+    R["walk_action_rate"] = RewardTermCfg(func=walk_action_rate, weight=float(os.environ.get("DUCK_GLAD", "-0.3")))   # 2026-11-27: niet bibberen   # at rest: no wiggling
     if RESIDUAL and PJ:
         R["residual_l2"] = RewardTermCfg(func=residual_l2, weight=-0.5 if ROOSTER == "dyn" else -4.0)
         if ROOSTER == "dyn":
