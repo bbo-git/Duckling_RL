@@ -7,17 +7,20 @@ Gebruik (vanuit src/mjlab_microduck/robot/duckling):
 import os, sys, json, math
 import numpy as np
 HERE = os.path.dirname(os.path.abspath(__file__)); sys.path.insert(0, HERE)
-out = sys.argv[1] if len(sys.argv) > 1 else "grids/gait_grid_stap_v3.npz"
+out = sys.argv[1] if len(sys.argv) > 1 else "grids/gait_grid_stap_v1.npz"
 kw = json.loads(sys.argv[2]) if len(sys.argv) > 2 else {}
 sys.argv = sys.argv[:1]
 import stap_gen as S
+VLOEI = "Th" in kw or "vloei" in out          # 2026-11-27: vloeiend loopje uit loop_gen.py (periodieke cyclus)
+if VLOEI:
+    import loop_gen as LG
 
 basis = dict(np.load("grids/gait_grid_pasje_v11.npz", allow_pickle=True))
 names = [str(n) for n in basis["joint_names"]]
-fr = S.maak(**kw)
+fr = LG.maak(**kw) if VLOEI else S.maak(**kw)
 fps = 50
 n = len(fr)
-hold = int(kw.get("hold_s", 1.0) * fps)
+hold = 0 if VLOEI else int(kw.get("hold_s", 1.0) * fps)
 # rollen: begin midden in de laatste pauze (gewicht verdeeld, beide voeten plat)
 shift = hold // 2
 order = list(range(n - shift, n)) + list(range(0, n - shift))
@@ -28,7 +31,7 @@ b = np.array([f["b"] for f in F])                             # x, y, z, roll
 c = np.array([f["contact"] for f in F], dtype=float)
 T = n; cyc = T / fps
 # vooruitgang per cyclus: 2 passen
-dist = (fr[-1]["b"][0] - fr[0]["b"][0])
+dist = (fr[-1]["b"][0] - fr[0]["b"][0]) * n / (n - 1)
 v = dist / cyc
 t = np.arange(T) / fps
 x_loc = b[:, 0] - (b[0, 0] + v * t)
