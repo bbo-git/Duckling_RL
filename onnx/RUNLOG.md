@@ -175,3 +175,4 @@ Regel: één verandering per run waar het kan.
 - Schema: 1-6 passen, vanaf 300 tot 12, vanaf 600 tot 24, met staan ertussen. Heup-roll-straf -3 en vertraging tot 60 ms blijven.
 - Kop-roll deels vrij (Jairo: trillingen opvangen): fout op kop-roll telt x0.25 in head_pose_tracking en head_level (DUCK_KOP_ROLL_VRIJ). Residu-bereik kop blijft 0.2 rad (~11 gr).
 - Nek- en kop-pitch half vrij (Jairo): fout x0.5 in head_pose_tracking, head_calm -0.025 (DUCK_KOP_PITCH_VRIJ). Let op terugkeer van het knikken (run 25 nov: 30-38 gr per pas).
+- DOEL LATER (Jairo: loop_v1/v2 is nog geen vloeiende loop): nieuw ontwerp i.p.v. losse fasen - doorlopende heupgolf (niet terug naar het midden), zwaai overlapt met gewichtsverplaatsing, cadans op de eigen wiegfrequentie (zoals de microduck).
