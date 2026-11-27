@@ -13,8 +13,8 @@ HERE = os.path.dirname(os.path.abspath(__file__)); sys.path.insert(0, HERE)
 import stap_gen as S
 from stap_gen import solve, teen_site, hiel_site, Ry_, herm, mj, H0, COM_DX, HEEL_DX, kin, home_feet, J, qi
 
-def maak(Th=0.40, A=0.003, L=0.010, ds=0.40, lift=0.014, teen_af=6.0, teen=10.0, hiel=0.0, rise=0.35, top=0.3,
-         com_x=0.0015, strek=0.002, breed=0.0, fps=50, aanloop=2, n_stap=8, alles=False):
+def maak(Th=0.33, A=0.004, L=0.014, ds=0.30, lift=0.008, teen_af=6.0, teen=10.0, hiel=0.0, rise=0.35, top=0.3,
+         com_x=0.0015, strek=0.002, breed=0.0, fps=50, aanloop=2, n_stap=8, alles=False, fase=0.0, vorm=1.0):
     """Th = tijd per pas (s); A = zwaartepunt opzij (m); L = paslengte (m, lichaam per pas); ds = fractie dubbele steun.
     aanloop = aantal passen waarin A en L oplopen vanuit stilstand. Uitvoer: de laatste volledige cyclus (2 passen,
     periodiek, voor het rooster), of met alles=True alle passen vanaf stilstand (voor de speler)."""
@@ -39,7 +39,9 @@ def maak(Th=0.40, A=0.003, L=0.010, ds=0.40, lift=0.014, teen_af=6.0, teen=10.0,
         p0 = heel_ref(Pi)
         for k in range(n_half):
             u = (k + 0.5) / n_half
-            cxy = np.array([c_from + (c_to - c_from) * u, sgn * Ai * math.sin(math.pi * u)])
+            sy = math.sin(math.pi * min(max(u + fase, 0.0), 1.0)) if fase >= 0 else math.sin(math.pi * min(max(u + fase, 0.0), 1.0))
+            sy = math.copysign(abs(sy) ** vorm, sy)      # vorm < 1: platter (langer boven de standvoet, sneller door het midden)
+            cxy = np.array([c_from + (c_to - c_from) * u, sgn * Ai * sy])
             f = {}; rot = {}
             if u < d:
                 w = mj(u / d)

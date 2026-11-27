@@ -195,3 +195,4 @@ Voorbeelden (open lus, servo 1.0x/1.6x; "buiten zwaai" = voet los terwijl hij mo
 - vloei_v3: staat, 2.9-3.5 / 1.9-2.5 buiten, 49/46 %
 => GEEN enkel voorbeeld is schoon; alle hebben minstens 1 extra voet-los per pas.
 Netwerk 250 (vloei-run, op vloei_v2, 40 ms vertraging): staat overal; hoog (0.277): 8 mm/s van 25, 1.5 buiten zwaai/pas, heup-roll tot +13, romp +-15, trillen 0.15; laag (0.069): achteruit, rust-schuiven 16-29 mm.
+- vloei_v4 = EERSTE VOORBEELD DAT DE KEURING HAALT: loop_gen Th 0,33 s, ds 0,3, A 4 mm, lift 8 mm, L 14 mm. Open lus 1.0 voet los per pas, 0.0 buiten de zwaai, bij 0.85/1.0/1.6/2.0x; romp +-5; ~16 mm/s (ontwerp 43). Gevonden met zoekrun (60 + 24 varianten). Standaard in training en player.

@@ -33,7 +33,7 @@ tar xf /workspace/duck_env.tar -C /root
 ln -s /workspace/duck_logs Duckling_RL/duckling/logs
 export PATH="$HOME/.local/bin:$PATH"
 cd /root/Duckling_RL && export REPO=$PWD/duckling
-./duckling/duck.sh train 600                                            # default grid: gait_grid_stap_loop_vloei_v3.npz (0.5 s per step)
+./duckling/duck.sh train 600                                            # default grid: gait_grid_stap_loop_vloei_v4.npz (0.5 s per step)
 # DUCK_GRID=<file in grids/> ./duckling/duck.sh train 600               # another example walk
 # ./duckling/duck.sh resume 300 200                                     # continue from model_200
 ./duckling/duck.sh export 100 --push                                    # checkpoint -> onnx/ in the repo
