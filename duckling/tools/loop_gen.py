@@ -4,6 +4,8 @@ Anders dan stap_gen (losse fasen, zwaartepunt elke pas terug naar het midden met
 - zwaartepunt vooruit = constante snelheid;
 - dubbele steun kort: achterste voet rolt over de teen op terwijl de voorste van hiel naar plat rolt;
 - zwaai: teen eerst omlaag (knie), dan teen op, landen op de hiel.
+2026-11-27: standaard (teen-afzet 6, hiel 0, teen 10, com_x 1,5 mm, ds 0,4) staat open lus 24 passen bij 0.85-2.0x;
+grotere teen-/hielhoeken (15/12/25) vielen binnen 2-4 passen.
 Een cyclus = pas met links staan + pas met rechts staan. Zelfde uitvoer als stap_gen (frames, npz)."""
 import os, sys, json, math
 import numpy as np
@@ -11,8 +13,8 @@ HERE = os.path.dirname(os.path.abspath(__file__)); sys.path.insert(0, HERE)
 import stap_gen as S
 from stap_gen import solve, teen_site, hiel_site, Ry_, herm, mj, H0, COM_DX, HEEL_DX, kin, home_feet, J, qi
 
-def maak(Th=0.40, A=0.003, L=0.010, ds=0.30, lift=0.014, teen_af=15.0, teen=25.0, hiel=12.0, rise=0.35, top=0.3,
-         com_x=0.0, strek=0.002, breed=0.0, fps=50, aanloop=2, n_stap=8, alles=False):
+def maak(Th=0.40, A=0.003, L=0.010, ds=0.40, lift=0.014, teen_af=6.0, teen=10.0, hiel=0.0, rise=0.35, top=0.3,
+         com_x=0.0015, strek=0.002, breed=0.0, fps=50, aanloop=2, n_stap=8, alles=False):
     """Th = tijd per pas (s); A = zwaartepunt opzij (m); L = paslengte (m, lichaam per pas); ds = fractie dubbele steun.
     aanloop = aantal passen waarin A en L oplopen vanuit stilstand. Uitvoer: de laatste volledige cyclus (2 passen,
     periodiek, voor het rooster), of met alles=True alle passen vanaf stilstand (voor de speler)."""
