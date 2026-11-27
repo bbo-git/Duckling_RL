@@ -371,8 +371,11 @@ class BehaviorVelocityCommand(StyleVelocityCommand):
                 _gd = np.load(_P(__file__).parents[1] / "robot" / "duckling" / "grids" /
                               os.environ.get("DUCK_GRID", "gait_grid_stap_loop_vloei_v3.npz"), allow_pickle=True)
                 _f = round(float(_gd["stap_v"]) / float(_gd["v100"]), 3)
-                PASJES_STAGES = [(it_, n_, _f, _f) for it_, n_, _a, _b in PASJES_STAGES]
-                print("pasjes: snelheidsopdracht = rooster = %.3f x v100" % _f)
+                # 2026-11-27 (Jairo: met 0.05 geen dubbele stap maar niet vooruit, met 0.28 vooruit maar dubbele stap):
+                # snelheid als knop - opdracht tussen SNELHEID_MIN x en 1 x het rooster, zelfde ritme
+                _fmin = float(os.environ.get("DUCK_SNELHEID_MIN", "0.25"))
+                PASJES_STAGES = [(it_, n_, round(_f * _fmin, 3), _f) for it_, n_, _a, _b in PASJES_STAGES]
+                print("pasjes: snelheidsopdracht %.3f - %.3f x v100 (rooster %.3f)" % (_f * _fmin, _f, _f))
             except Exception as _e:
                 print("pasjes: stap_v niet gevonden, opdracht blijft 5 %:", _e)
 
