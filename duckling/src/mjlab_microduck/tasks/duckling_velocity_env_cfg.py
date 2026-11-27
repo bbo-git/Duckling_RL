@@ -775,6 +775,11 @@ def reset_to_reference(env, env_ids: torch.Tensor, prob: float = 0.8):
     asset.write_root_link_velocity_to_sim(vel, env_ids=sel)
 
 
+# 2026-11-27 (Jairo): kop-roll een beetje vrij, zodat hij trillingen/schommelen kan opvangen. De fout op kop-roll
+# telt maar voor deze fractie mee in head_pose_tracking en head_level (0.25: 12 gr afwijking kost wat 3 gr kostte).
+HEAD_ROLL_VRIJ = float(os.environ.get("DUCK_KOP_ROLL_VRIJ", "0.25"))
+
+
 def head_pose_with_style(env, command_name: str = "head_pose", std: float = 0.5,
                          fine_std: float = 0.1, fine_weight: float = 0.5) -> torch.Tensor:
     """head_pose_tracking, but the target is the head command (looking around) PLUS the
@@ -789,6 +794,7 @@ def head_pose_with_style(env, command_name: str = "head_pose", std: float = 0.5,
     cmd = head_command_when_moving(env, command_name)                        # (N, 4), 0 at rest
     target = cmd + (_ref(env).head_offset_now(env) if USE_GAIT_GRID else 0.0)
     err = asset.data.joint_pos[:, ids] - asset.data.default_joint_pos[:, ids] - target
+    err = torch.cat([err[:, :3], err[:, 3:4] * HEAD_ROLL_VRIJ], -1)          # kop-roll (HEAD_JOINTS[3]) deels vrij
     per = (1 - fine_weight) * torch.exp(-(err / std) ** 2) + fine_weight * torch.exp(-(err / fine_std) ** 2)
     return per.mean(-1)
 
@@ -818,6 +824,7 @@ def head_level(env, command_name: str = "head_pose", std: float = 0.3, fine_std:
     cmd = head_command_when_moving(env, command_name)
     target = cmd + (_ref(env).head_offset_now(env) if USE_GAIT_GRID else 0.0)
     err = (asset.data.joint_pos[:, ids] - asset.data.default_joint_pos[:, ids] - target)[:, 2:4]   # yaw, roll
+    err = torch.cat([err[:, :1], err[:, 1:2] * HEAD_ROLL_VRIJ], -1)          # 2026-11-27: kop-roll deels vrij
     per = 0.5 * torch.exp(-(err / std) ** 2) + 0.5 * torch.exp(-(err / fine_std) ** 2)
     return per.mean(-1)
 

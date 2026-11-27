@@ -173,3 +173,4 @@ Regel: één verandering per run waar het kan.
 ## 27 nov - loopje v1 (stap v3 doorlopend)
 - Rooster gait_grid_stap_loop_v1.npz: hold 0, back 0,25, shift 0,35, zwaai 0,15 -> 0,72 s per pas, ~10 mm per pas. Open lus 12 passen schoon bij 1.0-2.0x (valt bij 0.7x).
 - Schema: 1-6 passen, vanaf 300 tot 12, vanaf 600 tot 24, met staan ertussen. Heup-roll-straf -3 en vertraging tot 60 ms blijven.
+- Kop-roll deels vrij (Jairo: trillingen opvangen): fout op kop-roll telt x0.25 in head_pose_tracking en head_level (DUCK_KOP_ROLL_VRIJ). Residu-bereik kop blijft 0.2 rad (~11 gr).
