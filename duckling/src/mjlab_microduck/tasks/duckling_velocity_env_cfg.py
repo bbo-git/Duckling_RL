@@ -363,6 +363,18 @@ class BehaviorVelocityCommand(StyleVelocityCommand):
             if "loop" in os.environ.get("DUCK_GRID", "gait_grid_stap_loop_vloei_v2.npz"):
                 # 2026-11-27 loopje: doorlopend, dus langere stukken (pas = 0,72 s); starten en stoppen blijven erin
                 PASJES_STAGES = [(0, 6, 0.05, 0.05), (300, 12, 0.05, 0.05), (600, 24, 0.05, 0.05)]
+            # 2026-11-27 FOUT HERSTELD: de snelheidsopdracht moet de snelheid van het rooster zijn (stap_v), anders beloont
+            # track_linear_velocity langzamer lopen dan het voorbeeld. Loop-run 200 liep zo ACHTERUIT (opdracht 5 % =
+            # 4.5 mm/s, rooster 25 mm/s). Stap v3 (4.5 mm/s) klopte toevallig wel.
+            try:
+                from pathlib import Path as _P
+                _gd = np.load(_P(__file__).parents[1] / "robot" / "duckling" / "grids" /
+                              os.environ.get("DUCK_GRID", "gait_grid_stap_loop_vloei_v2.npz"), allow_pickle=True)
+                _f = round(float(_gd["stap_v"]) / float(_gd["v100"]), 3)
+                PASJES_STAGES = [(it_, n_, _f, _f) for it_, n_, _a, _b in PASJES_STAGES]
+                print("pasjes: snelheidsopdracht = rooster = %.3f x v100" % _f)
+            except Exception as _e:
+                print("pasjes: stap_v niet gevonden, opdracht blijft 5 %:", _e)
 
     def _pasjes(self):
         n_env, dev = self.num_envs, self.device
