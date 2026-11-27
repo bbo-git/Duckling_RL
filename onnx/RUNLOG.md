@@ -186,3 +186,12 @@ Regel: één verandering per run waar het kan.
 - FOUT gevonden (Jairo: 200 van de vloei-run loopt achteruit): de snelheidsopdracht in de pasjes-training stond vast op 5 % (= stap v3), maar loop_v1 gaat 15,5 %, loop_v2 16,4 %, vloei_v2 27,7 %. track_linear_velocity beloonde dus langzamer lopen dan het voorbeeld -> achteruit/niet vooruit. Nu: opdracht = stap_v/v100 uit het rooster. Op de eend/player voor vloei_v2: snelheid 0.28 (oefen 3 4 0.28 1.5).
 - Gebibber (Jairo, echte eend, 200 van de loop-run): been-acties springen ~0.12 per 20 ms (enkels/knieen); in de sim zelfs 0.3 -> eigenschap van het netwerk, geen sim-to-real. Nieuw: walk_action_rate -0.3 (DUCK_GLAD) op de been-acties tijdens het lopen.
 - Dubbele stap zit in het vloeiende VOORBEELD (open lus ~3x voet los per pas bij 0,4-0,5 s per pas; de eend wiegt van nature ~0,28 s per pas en wiegt in de lange dubbele steun terug). 250 met opdracht 0.05: geen dubbele stap maar niet vooruit; met 0.28: vooruit maar dubbele stap -> het netwerk kan het. Nu: snelheidsopdracht 0.25-1.0 x het rooster (DUCK_SNELHEID_MIN), zelfde ritme = snelheidsknop.
+
+## KEURING (27 nov) - tools/keuring.py, vaste maat voor elk voorbeeld en netwerk
+Voorbeelden (open lus, servo 1.0x/1.6x; "buiten zwaai" = voet los terwijl hij moet staan = dubbele stap):
+- stap_v3 (losse pasjes): staat, 2.0 los/pas waarvan 1.0 buiten zwaai, 94/86 % van ontwerpsnelheid
+- stap_loop_v2: staat, 2.0 / 1.0 buiten, 52/49 %
+- vloei_v2: staat, 3.0 / 2.0 buiten, 40/29 %
+- vloei_v3: staat, 2.9-3.5 / 1.9-2.5 buiten, 49/46 %
+=> GEEN enkel voorbeeld is schoon; alle hebben minstens 1 extra voet-los per pas.
+Netwerk 250 (vloei-run, op vloei_v2, 40 ms vertraging): staat overal; hoog (0.277): 8 mm/s van 25, 1.5 buiten zwaai/pas, heup-roll tot +13, romp +-15, trillen 0.15; laag (0.069): achteruit, rust-schuiven 16-29 mm.

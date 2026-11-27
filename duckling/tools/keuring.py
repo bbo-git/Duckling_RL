@@ -1,201 +1,133 @@
-"""keuring.py - vaste meetlat voor een loop-netwerk (2026-11-25).
+"""keuring.py - vaste keuring van een voorbeeld (rooster) of een netwerk in de simulatie (2026-11-27).
+Elke run dezelfde maat, zodat we op cijfers beslissen in plaats van gokken.
 
-Draait een onnx een paar keer kort in de simulatie (zonder viewer, zonder rust-modus: het netwerk
-staat altijd aan, zoals met `rust uit` op de robot) en meet:
-  staan        wegschuiven (mm) bij vx = 0
-  loop 0.5     gehaalde snelheid t.o.v. de opdracht (50 % = 4.5 cm/s)
-  loop 1.0     idem bij 100 %
-  draai        gehaalde draaisnelheid bij 20 gr/s op de plaats
-  heup-yaw     gemiddelde stand (tenen naar binnen = negatief; X-poten bij < -5 gr)
-  onrust       gemiddelde verandering van de netwerk-uitvoer per stap (gr) - lager = rustiger
-  sterk 1.6x   loop 0.5 met 1.6x sterkere servo's (de echte eend); zwak 0.7x idem
-en geeft per regel OK / FOUT, plus een eindoordeel. Schrijft een regel bij in onnx/KEURING.md.
+Vanuit src/mjlab_microduck/robot/duckling:
+  python ../../../../tools/keuring.py voorbeeld grids/gait_grid_stap_loop_vloei_v3.npz
+  python ../../../../tools/keuring.py netwerk ../../../../../onnx/duckling_walk_250.onnx [--rooster grids/...npz]
 
-Gebruik (vanuit src/mjlab_microduck/robot/duckling, zoals de players):
-  python ../../../../tools/keuring.py ../../../../../onnx/duckling_walk_650.onnx [meer.onnx ...]
-  python ../../../../tools/keuring.py 650 1150          (kort: getal = onnx/duckling_walk_<n>.onnx)
-  python ../../../../tools/keuring.py --residu 300      (netwerken met residu-acties, vanaf 26 nov)
-  python ../../../../tools/keuring.py --residu --pasjes 300   (fase "pasjes": tot 30 %, start/stop, geen draaien)
-"""
-import os
-import sys
-import time
-
+VOORBEELD (zonder netwerk, het loopje uit het rooster herhaald, 12 s): bij servo 1.0x en 1.6x
+  valt / blijft staan, voet los per pas (1.0 = schoon, 2+ = dubbele stap), vooruit (mm/s) t.o.v. het ontwerp,
+  romp-roll en -pitch.
+NETWERK (oefenen: 8 passen, 1.5 s stil, herhaald, 16 s; 40 ms vertraging zoals de echte eend): bij lage en hoge
+  snelheid (25 % en 100 % van het rooster) en servo 1.0x / 1.6x: valt, vooruit t.o.v. de opdracht, voet los per pas,
+  heup-roll (ontwerp ~6 gr), romp-roll, trillen (gem. sprong van de been-acties per 20 ms; < 0.05 is rustig),
+  en in rust: wegschuiven (mm)."""
+import os, sys, io, json, math, argparse, contextlib
 import numpy as np
+HERE = os.path.dirname(os.path.abspath(__file__)); sys.path.insert(0, HERE)
+import duckling_play_onnx as P
+import duckling_servo as DS
 
-HERE = os.path.dirname(os.path.abspath(__file__))
-sys.path.insert(0, HERE)
-import duckling_play_onnx as P   # noqa: E402
-import duckling_servo as DS      # noqa: E402
+def _kracht(k):
+    base = {id(dd): dd['stall'] for dd in (DS.ES9051, DS.DIFF_HIP)}
+    for dd in (DS.ES9051, DS.DIFF_HIP): dd['stall'] = base[id(dd)] * k
+    return lambda: [dd.__setitem__('stall', base[id(dd)]) for dd in (DS.ES9051, DS.DIFF_HIP)]
 
-ONNX_DIR = os.path.normpath(os.path.join(HERE, "..", "..", "onnx"))
-V100 = 0.09     # m/s bij 100 % ("normaal")
-T = 8.0         # s per proef; meten vanaf 2 s
-T0 = 2.0
+def _contacts(r):
+    m = r.m
+    if not hasattr(r, '_kgl'):
+        r._kgl = [[i for i in range(m.ngeom) if (m.geom(i).name or '') == s + '_foot_collision'] for s in ('left', 'right')]
+    return [any(r.d.contact[j].geom1 in g or r.d.contact[j].geom2 in g for j in range(r.d.ncon)) for g in r._kgl]
 
-# grenzen (eindoordeel = alles OK)
-GRENS = {
-    "staan_mm": 30.0,      # hooguit 3 cm wegschuiven in 6 s
-    "loop_frac": 0.6,      # minstens 60 % van de gevraagde snelheid
-    "draai_frac": 0.5,     # minstens 50 % van de gevraagde draaisnelheid
-    "heupyaw_gr": 5.0,     # tenen binnen 5 gr van recht
-    "sterk_frac": 0.4,     # met 1.6x sterkere servo's nog 40 % vooruit
-}
+def _rp(r):
+    R = np.zeros(9); P.mujoco.mju_quat2Mat(R, r.d.qpos[3:7]); R = R.reshape(3, 3)
+    return math.degrees(math.atan2(R[2, 1], R[2, 2])), math.degrees(-math.asin(np.clip(R[2, 0], -1, 1)))
 
-_BASE = {id(d): dict(d) for d in (DS.ES9051, DS.DIFF_HIP)}
-RESIDU = ["--residu" in sys.argv]
-FASE_PASJES = ["--pasjes" in sys.argv]   # alleen tot 30 % keuren (fase "pasjes"), geen draaien   # 2026-11-26: netwerken met residu-acties (vanaf de run van 26 nov)
-_GRIDS = None
+def voorbeeld(grid, T=12.0):
+    d = np.load(grid, allow_pickle=True)
+    S = np.asarray(d['speeds']); i = int(np.argmax(S > 0.05)); wi = int(np.argmin(np.abs(np.asarray(d['turns']))))
+    L = int(d['length'][i, wi, 0]); Qg = np.asarray(d['joint_pos'][i, wi, 0, :L]); names = [str(n) for n in d['joint_names']]
+    Cg = np.asarray(d['contact'][i, wi, 0, :L]) > 0.5
+    cyc = float(d['cycle_s'][i, wi, 0]); v_ontw = float(d['stap_v']) if 'stap_v' in d else float(d['vel'][i, wi, 0][0])
+    print('VOORBEELD %s: cyclus %.2f s (%.2f s per pas), ontwerp %.1f mm/s' % (os.path.basename(grid), cyc, cyc / 2, v_ontw * 1000))
+    res = {}
+    for k in (1.0, 1.6):
+        herstel = _kracht(k)
+        with contextlib.redirect_stdout(io.StringIO()):
+            r = P.Duckling('scene_walk.xml'); r.gait_clock = False; r.residual = False
+        idx = [names.index(n) for n in r.names]
+        Q = Qg[:, idx] - r.home
+        seq = [np.zeros_like(Q[0])] * 50 + [Q[0] * (j + 1) / 25 for j in range(25)]
+        n_cyc = int(T / cyc) + 1; seq += list(np.tile(Q, (n_cyc, 1)))
+        C = []; RP = []; fell = None; x0 = None
+        with contextlib.redirect_stdout(io.StringIO()):
+            for kk, q in enumerate(seq):
+                r.step(q, None)
+                if kk == 75: x0 = r.d.qpos[0]
+                C.append(_contacts(r)); RP.append(_rp(r))
+                if r.fallen: fell = kk / 50; break
+        herstel()
+        C = np.array(C[75:]); RP = np.array(RP[75:])
+        CD = np.tile(Cg, (n_cyc, 1))[:len(C)]
+        half = L // 2; n_m = min(len(C), 8 * half); meet = C[-n_m:]; md = CD[len(C) - n_m:]      # laatste 8 passen
+        los = sum(1 for j in range(1, len(meet)) for s in (0, 1) if meet[j-1, s] and not meet[j, s]) / max(1, n_m / half)
+        extra = sum(1 for j in range(1, len(meet)) for s in (0, 1) if meet[j-1, s] and not meet[j, s] and md[j, s]) / max(1, n_m / half)
+        dur = len(C) / 50
+        res[k] = dict(valt=fell, los=los, extra=extra, v=(r.d.qpos[0] - x0) / max(dur, 1e-3) * 1000 if x0 is not None else 0,
+                      roll=(RP[:, 0].min(), RP[:, 0].max()), pitch=(RP[:, 1].min(), RP[:, 1].max()))
+        o = res[k]
+        print('  servo %.1fx: %-12s voet los/pas %.1f, waarvan buiten de zwaai %.1f | vooruit %5.1f mm/s (%3.0f %% van ontwerp) | romp roll %+.0f..%+.0f pitch %+.0f..%+.0f' % (
+            k, ('VALT %.1f s' % fell) if fell else 'staat', o['los'], o['extra'], o['v'], 100 * o['v'] / max(v_ontw * 1000, 1e-3), *o['roll'], *o['pitch']))
+    ok = all(not o['valt'] and o['extra'] <= 0.3 for o in res.values())
+    print('  OORDEEL: %s' % ('GOED (staat, voeten alleen los in de zwaai)' if ok else 'NIET GOED (valt of voet los buiten de zwaai = dubbele stap)'))
+    return ok
 
+def netwerk(onnx, grid, T=16.0, lag=2):
+    P.STYLES[:] = [(n_, grid) for n_, _ in P.STYLES]
+    d = np.load(grid, allow_pickle=True)
+    f_hi = round(float(d['stap_v']) / float(d['v100']), 3) if 'stap_v' in d else 0.3
+    S_ = np.asarray(d['speeds']); i_ = int(np.argmax(S_ > 0.05)); w_ = int(np.argmin(np.abs(np.asarray(d['turns']))))
+    Lg = int(d['length'][i_, w_, 0]); Cg = np.asarray(d['contact'][i_, w_, 0, :Lg]) > 0.5
+    print('NETWERK %s op %s (opdracht laag %.3f / hoog %.3f, vertraging %d ms)' % (os.path.basename(onnx), os.path.basename(grid), f_hi * 0.25, f_hi, lag * 20))
+    legs = None
+    for f in (round(f_hi * 0.25, 3), f_hi):
+        for k in (1.0, 1.6):
+            herstel = _kracht(k)
+            with contextlib.redirect_stdout(io.StringIO()):
+                pol = P.Policy(onnx); P.REST_MODE[0] = False
+                grids = [P.GridClock(p) for _, p in P.STYLES]
+                r = P.Duckling('scene_walk.xml', sliders=False, grid=grids[0]); r.residual = True; r.gait_clock = True
+                r.styled = pol.n_in == 63 + len(P.STYLES)
+                if r.styled: r.grids = grids; r.set_style(0)
+                o = P.Oefen(8, f, 1.5, r.grid.v100)
+            r.lag = lag
+            if legs is None: legs = [j for j, n in enumerate(r.names) if not n.startswith(('neck', 'head'))]
+            hr = [j for j, n in enumerate(r.names) if n.endswith('hip_roll')]
+            dt = P.TIMESTEP * P.DECIMATION
+            A = []; MV = []; C = []; RP = []; X = []; HR = []; PH = []; fell = None
+            with contextlib.redirect_stdout(io.StringIO()):
+                for kk in range(int(T / dt)):
+                    tw = np.array([o.vx(r.phase, dt), 0, 0]); a = pol(r.obs(tw, np.zeros(4))); r.step(a, tw)
+                    A.append(a); MV.append(tw[0] > 0); C.append(_contacts(r)); RP.append(_rp(r)); X.append(r.d.qpos[0])
+                    HR.append(np.degrees(r.d.qpos[[r.qadr[j] for j in hr]])); PH.append(r.phase)
+                    if r.fallen: fell = kk * dt; break
+            herstel()
+            A = np.array(A); MV = np.array(MV); C = np.array(C); RP = np.array(RP); X = np.array(X); HR = np.array(HR); PH = np.array(PH)
+            steps = sum(1 for j in range(1, len(PH)) if MV[j] and int(PH[j] * 2) != int(PH[j-1] * 2))
+            los = sum(1 for j in range(1, len(C)) for s in (0, 1) if C[j-1, s] and not C[j, s] and MV[j]) / max(1, steps)
+            extra = sum(1 for j in range(1, len(C)) for s in (0, 1) if C[j-1, s] and not C[j, s] and MV[j]
+                        and Cg[min(int(PH[j] * Lg), Lg - 1), s]) / max(1, steps)
+            t_mv = MV.sum() * dt
+            v = 0.0
+            for j in range(1, len(X)):
+                if MV[j]: v += X[j] - X[j-1]
+            v = v / max(t_mv, 1e-3) * 1000; v_cmd = f * float(d['v100']) * 1000
+            tril = np.abs(np.diff(A[:, legs], axis=0))[MV[1:]].mean() if MV[1:].any() else 0
+            drift = 0.0
+            for j in range(1, len(X)):
+                if not MV[j]: drift += abs(X[j] - X[j-1])
+            hr_ = HR[MV] if MV.any() else HR
+            print('  snelheid %.3f servo %.1fx: %-11s vooruit %5.1f mm/s (opdracht %4.1f) | voet los/pas %.1f (buiten zwaai %.1f) | heup-roll %+.0f..%+.0f | romp roll %+.0f..%+.0f | trillen %.3f | rust-schuiven %.0f mm' % (
+                f, k, ('VALT %.1f s' % fell) if fell else 'staat', v, v_cmd, los, extra, hr_.min(), hr_.max(), RP[:, 0].min(), RP[:, 0].max(), tril, drift * 1000))
 
-def _yaw(q):
-    return 2.0 * np.arctan2(q[3], q[0])
-
-
-def pasjes(onnx, f=0.3, loop_s=2.0):
-    """2026-11-26: start vanuit HOME, 1 s staan, loop_s lopen op f, dan 4 s staan. Meet: valt hij, hoeveel
-    schuift hij na de stop nog (mm) en draait hij na de stop (gr)."""
-    global _GRIDS
-    if _GRIDS is None:
-        _GRIDS = [P.GridClock(p) for _, p in P.STYLES]
-    pol = P.Policy(onnx)
-    r = P.Duckling("scene_walk.xml", grid=_GRIDS[0])
-    r.gait_clock, r.styled, r.grids = True, True, _GRIDS
-    r.set_style(0)
-    r.residual = RESIDU[0]
-    t_stop = 1.0 + loop_s
-    p_stop = None
-    for k in range(int((t_stop + 4.0) / 0.02)):
-        t = k * 0.02
-        tw = np.array([f * V100 if 1.0 <= t < t_stop else 0.0, 0.0, 0.0])
-        r.step(pol(r.obs(tw, np.zeros(4))), tw)
-        if p_stop is None and t >= t_stop + 0.5:
-            p_stop = (r.d.qpos[:2].copy(), _yaw(r.d.qpos[3:7]))
-        if r.fallen:
-            return dict(val=True, t=t)
-    d = np.linalg.norm(r.d.qpos[:2] - p_stop[0]) * 1000
-    dy = np.degrees(abs(np.arctan2(np.sin(_yaw(r.d.qpos[3:7]) - p_stop[1]), np.cos(_yaw(r.d.qpos[3:7]) - p_stop[1]))))
-    return dict(val=False, na_stop_mm=d, na_stop_gr=dy)
-
-
-def proef(onnx, vx=0.0, wz=0.0, kracht=1.0):
-    global _GRIDS
-    for d in (DS.ES9051, DS.DIFF_HIP):
-        d["stall"] = _BASE[id(d)]["stall"] * kracht
-    if _GRIDS is None:
-        _GRIDS = [P.GridClock(p) for _, p in P.STYLES]
-    pol = P.Policy(onnx)
-    r = P.Duckling("scene_walk.xml", grid=_GRIDS[0])
-    r.gait_clock, r.styled, r.grids = True, True, _GRIDS
-    r.set_style(0)
-    r.residual = RESIDU[0]
-    ji = {n: i for i, n in enumerate(r.names)}
-    hy = [ji["left_hip_yaw"], ji["right_hip_yaw"]]
-    start = None
-    qs, da, prev = [], [], None
-    n = int(T / 0.02)
-    for k in range(n):
-        t = k * 0.02
-        tw = np.array([vx, 0.0, wz]) if t > 0.5 else np.zeros(3)
-        a = pol(r.obs(tw, np.zeros(4)))
-        r.step(a, tw)
-        if t >= T0:
-            if start is None:
-                start = (r.d.qpos[:2].copy(), _yaw(r.d.qpos[3:7]), t)
-            qs.append(np.degrees(r.d.qpos[r.qadr][hy]))
-            if prev is not None:
-                da.append(np.degrees(np.abs(a - prev)).mean())
-        prev = a.copy()
-        if r.fallen:
-            return dict(val=True, t=t)
-    p0, y0, t0 = start
-    dur = T - t0
-    h = y0
-    d = r.d.qpos[:2] - p0
-    vooruit = (np.cos(h) * d[0] + np.sin(h) * d[1])            # m langs de beginrichting
-    dyaw = np.degrees(np.arctan2(np.sin(_yaw(r.d.qpos[3:7]) - y0), np.cos(_yaw(r.d.qpos[3:7]) - y0)))
-    return dict(val=False, vooruit_mm=vooruit * 1000, v=vooruit / dur, w_gr=dyaw / dur,
-                heupyaw=float(np.mean(qs)), onrust=float(np.mean(da)))
-
-
-def keur(onnx):
-    naam = os.path.basename(onnx)
-    rij, ok = [], []
-
-    def regel(label, waarde, goed):
-        rij.append((label, waarde, goed))
-        ok.append(goed)
-
-    s = proef(onnx)
-    if s["val"]:
-        regel("staan", "VALT", False)
+if __name__ == '__main__':
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument('wat', choices=['voorbeeld', 'netwerk'])
+    ap.add_argument('bestand')
+    ap.add_argument('--rooster', default=None, help='bij netwerk: rooster (standaard = dat van de player)')
+    ap.add_argument('--vertraging', type=int, default=2, help='stappen van 20 ms (echte eend ~2)')
+    a = ap.parse_args()
+    if a.wat == 'voorbeeld':
+        voorbeeld(a.bestand)
     else:
-        regel("staan", "%+.0f mm" % s["vooruit_mm"], abs(s["vooruit_mm"]) <= GRENS["staan_mm"])
-        regel("heup-yaw (staan)", "%+.1f gr" % s["heupyaw"], abs(s["heupyaw"]) <= GRENS["heupyaw_gr"])
-        regel("onrust (staan)", "%.1f gr/stap" % s["onrust"], True)
-    for f, ls in ((0.3, 1.0), (0.3, 3.0)):
-        pj = pasjes(onnx, f, ls)
-        lab = "pasjes %.0f s op %.0f %%" % (ls, f * 100)
-        if pj["val"]:
-            regel(lab, "VALT (%.1f s)" % pj["t"], False)
-        else:
-            regel(lab, "na stop %.0f mm / %.0f gr" % (pj["na_stop_mm"], pj["na_stop_gr"]),
-                  pj["na_stop_mm"] <= 15 and pj["na_stop_gr"] <= 5)
-    for frac in ((0.3, 0.5, 1.0) if not FASE_PASJES[0] else (0.3,)):
-        l = proef(onnx, vx=frac * V100)
-        lab = "loop %.1f" % frac
-        if l["val"]:
-            regel(lab, "VALT", False)
-            continue
-        f = l["v"] / (frac * V100)
-        regel(lab, "%.1f cm/s = %.0f %%" % (l["v"] * 100, f * 100), f >= GRENS["loop_frac"])
-        if frac == (0.3 if FASE_PASJES[0] else 0.5):
-            regel("heup-yaw (lopen)", "%+.1f gr" % l["heupyaw"], abs(l["heupyaw"]) <= GRENS["heupyaw_gr"])
-            regel("onrust (lopen)", "%.1f gr/stap" % l["onrust"], True)
-    if not FASE_PASJES[0]:
-        w = proef(onnx, wz=np.radians(20.0))
-        if w["val"]:
-            regel("draai 20 gr/s", "VALT", False)
-        else:
-            regel("draai 20 gr/s", "%+.0f gr/s" % w["w_gr"], w["w_gr"] / 20.0 >= GRENS["draai_frac"])
-    fk = 0.3 if FASE_PASJES[0] else 0.5
-    for kracht in (1.6, 0.7):
-        lab = "loop %.1f, servo %.1fx" % (fk, kracht)
-        k = proef(onnx, vx=fk * V100, kracht=kracht)
-        if k["val"]:
-            regel(lab, "VALT", False)
-        else:
-            f = k["v"] / (fk * V100)
-            regel(lab, "%.0f %%" % (f * 100), f >= GRENS["sterk_frac"])
-    for d in (DS.ES9051, DS.DIFF_HIP):
-        d["stall"] = _BASE[id(d)]["stall"]
-    return naam, rij, all(ok)
-
-
-def main():
-    args = [a for a in sys.argv[1:] if not a.startswith("--")]
-    if not args:
-        print(__doc__)
-        return
-    regels = []
-    for a in args:
-        f = os.path.join(ONNX_DIR, "duckling_walk_%s.onnx" % a) if a.isdigit() else a
-        naam, rij, goed = keur(f)
-        print("\n== %s" % naam)
-        for label, waarde, g in rij:
-            print("  %-24s %-20s %s" % (label, waarde, "ok" if g else "FOUT"))
-        print("  oordeel: %s" % ("GOED - mag hangend op de eend" if goed else "NOG NIET"))
-        kort = " | ".join("%s %s%s" % (l, w, "" if g else " (FOUT)") for l, w, g in rij)
-        regels.append("- %s `%s` **%s**: %s" % (time.strftime("%Y-%m-%d %H:%M"), naam,
-                                                "GOED" if goed else "nog niet", kort))
-    log = os.path.join(ONNX_DIR, "KEURING.md")
-    nieuw = not os.path.exists(log)
-    with open(log, "a", encoding="utf-8") as fh:
-        if nieuw:
-            fh.write("# Keuring loop-netwerken (tools/keuring.py)\n\nGrenzen: %s\n\n" % GRENS)
-        fh.write("\n".join(regels) + "\n")
-    print("\nbijgeschreven in %s" % log)
-
-
-if __name__ == "__main__":
-    main()
+        netwerk(a.bestand, a.rooster or P.STYLES[0][1], lag=a.vertraging)

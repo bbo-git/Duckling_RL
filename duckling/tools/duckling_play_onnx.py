@@ -341,6 +341,10 @@ class Duckling:
                                        else ACTION_FILTER_ALPHA for n in self.names])
         self.filt = self.filt + self.alpha_vec * (target - self.filt)    # laagdoorlaat = training
         target = self.filt
+        L = getattr(self, "lag", 0)       # 2026-11-27: vertraging netwerk -> servo in stappen van 20 ms (keuring.py)
+        if L:
+            self.hist = ([self.filt.copy()] + getattr(self, "hist", [])[:L])
+            target = self.hist[min(L, len(self.hist) - 1)]
         if getattr(self, "est", None) is None:
             self.est = self.d.qpos[self.qadr].copy()
             self.vmax = np.array([est_vmax(n) for n in self.names])
