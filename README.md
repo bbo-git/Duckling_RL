@@ -26,6 +26,20 @@ chmod +x duck.sh && ./duck.sh setup
 ./duck.sh update /duck_volg16b.zip
 ENVS=8192 ./duck.sh train 2000
 ```
+### New RunPod pod (global volume at /workspace)
+```bash
+cd /root && git clone https://github.com/bbo-git/Duckling_RL
+tar xf /workspace/duck_env.tar -C /root
+ln -s /workspace/duck_logs Duckling_RL/duckling/logs
+export PATH="$HOME/.local/bin:$PATH"
+cd /root/Duckling_RL && export REPO=$PWD/duckling
+./duckling/duck.sh train 600                                            # default grid: gait_grid_stap_loop_v1.npz
+# DUCK_GRID=gait_grid_stap_loop_v2.npz ./duckling/duck.sh train 600     # smoother walk (shorter landing)
+./duckling/duck.sh export 100 --push                                    # checkpoint -> onnx/ in the repo
+```
+Before a new run: move old runs out of the way so `resume` picks the right one:
+`mkdir -p /workspace/duck_logs/oud && mv /workspace/duck_logs/rsl_rl/duckling_velocity/* /workspace/duck_logs/oud/`
+
 ### play iterations
 ```bash
 python duckling_follow.py duckling_walk_<iteration>.onnx --grid gait_grid_v7b.npz
