@@ -73,7 +73,7 @@ elif ROOSTER == "dyn":
     # 2026-11-26 middag (Jairo): STAP-ROOSTER uit tools/stap_gen.py + stap_grid.py: elke pas = leunen (heup-roll, zolen
     # plat) -> vloeiend afzetten en zwaaien (0.24 s) -> op de hak landen -> terug naar het midden -> 1 s pauze. Om en om.
     # Alle vooruit-opdrachten = deze pas (4.5 mm/s = 5 % van v100). Oud: DUCK_GRID=gait_grid_pasje_v11.npz
-    _g = os.environ.get("DUCK_GRID", "gait_grid_stap_loop_vloei_v2.npz")   # 2026-11-27: vloeiend loopje (loop_gen, 0,4 s per pas); stap_loop_v1/v2 = stap v3 doorlopend; stap_v3 = losse pasjes   # v11: 0.3 s per pas (v10: 0.45 = schuifelen)   # v8: + teen-afzet 10 gr, zwaartepunt 4 mm voor; v9: waggel 30 %
+    _g = os.environ.get("DUCK_GRID", "gait_grid_stap_loop_vloei_v3.npz")   # 2026-11-27: vloeiend loopje (loop_gen, 0,4 s per pas); stap_loop_v1/v2 = stap v3 doorlopend; stap_v3 = losse pasjes   # v11: 0.3 s per pas (v10: 0.45 = schuifelen)   # v8: + teen-afzet 10 gr, zwaartepunt 4 mm voor; v9: waggel 30 %
     STYLES = [("normaal", _g), ("parmantig", _g)]
 STYLE_PROBS = (1.0, 0.0)   # 2026-11-19: eerst alleen "normaal" (one-hot blijft 2 lang: firmware ongewijzigd)
 # Taak: "lopen" (snelheidscommando's, eerst trainen) of "volgen" (persoon volgen, fine-tune daarna)
@@ -357,10 +357,10 @@ class BehaviorVelocityCommand(StyleVelocityCommand):
     if ROOSTER == "dyn":
         # v5: 20 % = pas 4.5 mm, 30 % = 6.7 mm, 45 % = 10 mm (cadans van het loopje, ~0.25 s per pas)
         PASJES_STAGES = [(0, 4, 0.20, 0.30), (400, 4, 0.20, 0.40), (800, 8, 0.20, 0.50)]   # v6: 6.7-13 mm per pas
-        if "stap" in os.environ.get("DUCK_GRID", "gait_grid_stap_loop_vloei_v2.npz"):
+        if "stap" in os.environ.get("DUCK_GRID", "gait_grid_stap_loop_vloei_v3.npz"):
             # stap-rooster: snelheid ligt vast in de pas (5 %); eerst 1-2 passen per keer, dan meer
             PASJES_STAGES = [(0, 2, 0.05, 0.05), (400, 4, 0.05, 0.05), (800, 8, 0.05, 0.05)]
-            if "loop" in os.environ.get("DUCK_GRID", "gait_grid_stap_loop_vloei_v2.npz"):
+            if "loop" in os.environ.get("DUCK_GRID", "gait_grid_stap_loop_vloei_v3.npz"):
                 # 2026-11-27 loopje: doorlopend, dus langere stukken (pas = 0,72 s); starten en stoppen blijven erin
                 PASJES_STAGES = [(0, 6, 0.05, 0.05), (300, 12, 0.05, 0.05), (600, 24, 0.05, 0.05)]
             # 2026-11-27 FOUT HERSTELD: de snelheidsopdracht moet de snelheid van het rooster zijn (stap_v), anders beloont
@@ -369,7 +369,7 @@ class BehaviorVelocityCommand(StyleVelocityCommand):
             try:
                 from pathlib import Path as _P
                 _gd = np.load(_P(__file__).parents[1] / "robot" / "duckling" / "grids" /
-                              os.environ.get("DUCK_GRID", "gait_grid_stap_loop_vloei_v2.npz"), allow_pickle=True)
+                              os.environ.get("DUCK_GRID", "gait_grid_stap_loop_vloei_v3.npz"), allow_pickle=True)
                 _f = round(float(_gd["stap_v"]) / float(_gd["v100"]), 3)
                 PASJES_STAGES = [(it_, n_, _f, _f) for it_, n_, _a, _b in PASJES_STAGES]
                 print("pasjes: snelheidsopdracht = rooster = %.3f x v100" % _f)
@@ -401,7 +401,7 @@ class BehaviorVelocityCommand(StyleVelocityCommand):
         go = (st == 0) & (self._pj_t <= 0)
         if go.any():
             k = int(go.sum())
-            self._pj_left[go] = torch.randint(1 if ("stap" in os.environ.get("DUCK_GRID", "gait_grid_stap_loop_vloei_v2.npz") or not PJ) else 2, n_max + 1, (k,), device=dev)
+            self._pj_left[go] = torch.randint(1 if ("stap" in os.environ.get("DUCK_GRID", "gait_grid_stap_loop_vloei_v3.npz") or not PJ) else 2, n_max + 1, (k,), device=dev)
             self._pj_f[go] = torch.empty(k, device=dev).uniform_(f_min, max(f_max, f_min))
             st = torch.where(go, torch.ones_like(st), st)
         # wachten -> lopen op de grens van een halve cyclus (pas begint met een voet)
