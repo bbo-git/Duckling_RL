@@ -778,6 +778,8 @@ def reset_to_reference(env, env_ids: torch.Tensor, prob: float = 0.8):
 # 2026-11-27 (Jairo): kop-roll een beetje vrij, zodat hij trillingen/schommelen kan opvangen. De fout op kop-roll
 # telt maar voor deze fractie mee in head_pose_tracking en head_level (0.25: 12 gr afwijking kost wat 3 gr kostte).
 HEAD_ROLL_VRIJ = float(os.environ.get("DUCK_KOP_ROLL_VRIJ", "0.25"))
+# 2026-11-27 (Jairo): nek- en kop-pitch half vrij: fout telt x0.5, en head_calm (knik-snelheid) x0.5
+HEAD_PITCH_VRIJ = float(os.environ.get("DUCK_KOP_PITCH_VRIJ", "0.5"))
 
 
 def head_pose_with_style(env, command_name: str = "head_pose", std: float = 0.5,
@@ -794,7 +796,7 @@ def head_pose_with_style(env, command_name: str = "head_pose", std: float = 0.5,
     cmd = head_command_when_moving(env, command_name)                        # (N, 4), 0 at rest
     target = cmd + (_ref(env).head_offset_now(env) if USE_GAIT_GRID else 0.0)
     err = asset.data.joint_pos[:, ids] - asset.data.default_joint_pos[:, ids] - target
-    err = torch.cat([err[:, :3], err[:, 3:4] * HEAD_ROLL_VRIJ], -1)          # kop-roll (HEAD_JOINTS[3]) deels vrij
+    err = torch.cat([err[:, :2] * HEAD_PITCH_VRIJ, err[:, 2:3], err[:, 3:4] * HEAD_ROLL_VRIJ], -1)   # nek/kop-pitch en kop-roll deels vrij
     per = (1 - fine_weight) * torch.exp(-(err / std) ** 2) + fine_weight * torch.exp(-(err / fine_std) ** 2)
     return per.mean(-1)
 
@@ -1758,7 +1760,7 @@ def make_duckling_velocity_env_cfg(play: bool = False, rough: bool = False) -> M
     R["head_pose_tracking"].params = {"command_name": "head_pose", "std": 0.6, "fine_std": 0.15}   # 2026-10-31: fijn 0.1 -> 0.15 (minder nerveus)  # std 0.5 -> 0.25: a busy head was nearly free
     # survival: ending an episode must never pay off (else PPO learns to collapse)
     R["head_level"] = RewardTermCfg(func=head_level, weight=3.0, params={"command_name": "head_pose"})
-    R["head_calm"] = RewardTermCfg(func=head_calm, weight=-0.05)   # 2026-11-25: niet knikken als contragewicht   # volg16b
+    R["head_calm"] = RewardTermCfg(func=head_calm, weight=-0.05 * HEAD_PITCH_VRIJ)   # 2026-11-27: x HEAD_PITCH_VRIJ   # 2026-11-25: niet knikken als contragewicht   # volg16b
     R["alive"] = RewardTermCfg(func=envs_mdp.is_alive, weight=0.5)
     R["termination"] = RewardTermCfg(func=envs_mdp.is_terminated, weight=-50.0)
     # regularisation
